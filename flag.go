@@ -35,16 +35,12 @@ func getValidateFunction[T any](
 	validate func(T) (T, error),
 ) func(*cli.Context) error {
 	return func(c *cli.Context) error {
-		if required && !c.IsSet(name) {
-			return fmt.Errorf("flag %s: %w", name, ErrNotSet)
-		}
-
 		if validate != nil {
 			value, err := validate(in(name, c))
 			if err != nil {
 				return err
 			}
-			c.Set(name, fmt.Sprint(value))
+			return c.Set(name, fmt.Sprint(value))
 		}
 
 		return nil
@@ -136,12 +132,6 @@ func MakeFlag[T any](opts FlagOptions[T]) Flag {
 				Hidden:      opts.Hidden,
 				Destination: any(opts.Destination).(*bool),
 			}
-			out.validate = getValidateFunction(
-				opts.Name,
-				opts.Required,
-				func(in string, c *cli.Context) T { return any(c.BoolT(in)).(T) },
-				opts.Validate,
-			)
 		} else {
 			out.value = cli.BoolFlag{
 				Name:        opts.Name,
@@ -152,12 +142,6 @@ func MakeFlag[T any](opts FlagOptions[T]) Flag {
 				Hidden:      opts.Hidden,
 				Destination: any(opts.Destination).(*bool),
 			}
-			out.validate = getValidateFunction(
-				opts.Name,
-				opts.Required,
-				func(in string, c *cli.Context) T { return any(c.Bool(in)).(T) },
-				opts.Validate,
-			)
 		}
 	case []string:
 		o := cli.StringSliceFlag{

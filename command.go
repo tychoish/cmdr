@@ -2,6 +2,9 @@ package cmdr
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/tychoish/fun"
@@ -27,8 +30,8 @@ type Commander struct {
 	cmd        cli.Command
 	middleware adt.Atomic[func(context.Context) context.Context]
 	action     adt.Atomic[Operation]
-	sender     adt.Atomic[send.Sender]
 	opts       adt.Atomic[AppOptions]
+	sender     adt.Synchronized[send.Sender]
 	flags      adt.Synchronized[*seq.List[Flag]]
 	hook       adt.Synchronized[*seq.List[Operation]]
 	subcmds    adt.Synchronized[*seq.List[*Commander]]
@@ -41,11 +44,13 @@ type CommandOptions struct {
 	Name   string
 	Usage  string
 	Action Operation
+	Flags  []Flag
 	Hidden bool
 }
 
 func makeCommander(ctx context.Context) *Commander {
 	c := &Commander{ctx: ctx}
+	c.cmd.Name = filepath.Base(os.Args[0])
 
 	c.flags.Set(&seq.List[Flag]{})
 	c.hook.Set(&seq.List[Operation]{})
@@ -55,7 +60,7 @@ func makeCommander(ctx context.Context) *Commander {
 	c.cmd.Action = func(cc *cli.Context) error {
 		op := c.action.Get()
 		if op == nil {
-			return ErrNotDefined
+			return fmt.Errorf("action: %w", ErrNotDefined)
 		}
 		return op(ctx, cc)
 	}
@@ -68,6 +73,8 @@ func makeCommander(ctx context.Context) *Commander {
 				ctx = grip.WithLogger(ctx, grip.NewLogger(s))
 			}
 		}
+
+		grip.Context(ctx).Sender().SetName(c.cmd.Name)
 		ec := &erc.Collector{}
 		c.hook.With(func(hooks *seq.List[Operation]) {
 			ec.Add(fun.Observe(ctx, seq.ListValues(hooks.Iterator()),
@@ -75,7 +82,11 @@ func makeCommander(ctx context.Context) *Commander {
 		})
 		c.flags.With(func(hooks *seq.List[Flag]) {
 			ec.Add(fun.Observe(c.ctx, seq.ListValues(hooks.Iterator()),
-				func(fl Flag) { ec.Add(fl.validate(cc)) }))
+				func(fl Flag) {
+					if fl.validate != nil {
+						ec.Add(fl.validate(cc))
+					}
+				}))
 		})
 		return ec.Resolve()
 	}
@@ -116,8 +127,18 @@ func (c *Commander) Subcommand(opts CommandOptions) *Commander {
 	sub.cmd.Hidden = opts.Hidden
 
 	c.subcmds.With(func(in *seq.List[*Commander]) { in.PushBack(sub) })
+	for idx := range opts.Flags {
+		sub.AddFlag(opts.Flags[idx])
+	}
 
 	return sub
+}
+
+// AddSubcommand adds a subcommand to the commander and returns the
+// original commander.
+func (c *Commander) AddSubcommand(opts CommandOptions) *Commander {
+	c.Subcommand(opts)
+	return c
 }
 
 // AddFlag adds a command-line flag in the specified command. This is
@@ -183,16 +204,25 @@ func (c *Commander) SetAppOptions(opts AppOptions) *Commander { c.opts.Set(opts)
 // App resolves a command object from the commander and the provided options.
 func (c *Commander) App() *cli.App {
 	a := c.opts.Get()
+	cmd := c.Command()
 	app := cli.NewApp()
-	app.Name = a.Name
-	app.Usage = a.Usage
+
+	app.Name = setWhenNotZero(a.Name, cmd.Name)
+	app.Usage = setWhenNotZero(a.Usage, cmd.Usage)
 	app.Version = a.Version
 
-	cmd := c.Command()
+	app.Commands = cmd.Subcommands
 	app.Action = cmd.Action
 	app.Flags = cmd.Flags
 	app.After = cmd.After
 	app.Before = cmd.Before
 
 	return app
+}
+
+func setWhenNotZero[T comparable](a, b T) T {
+	if fun.IsZero(a) {
+		return b
+	}
+	return a
 }
