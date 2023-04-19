@@ -52,14 +52,14 @@ func TestCommander(t *testing.T) {
 				}).
 				SetAction(func(ctx context.Context, cc *cli.Context) error {
 					count++
-					check.Equal(t, cc.String("hello"), "merlin")
+					check.Equal(t, cc.String("hello"), "kip")
 					return nil
 				}).
 				AddFlag(MakeFlag(FlagOptions[string]{
 					Name: "hello",
-					Validate: func(in string) (string, error) {
+					Validate: func(in string) error {
 						check.Equal(t, in, "kip")
-						return "merlin", nil
+						return nil
 					},
 				}))
 
@@ -77,9 +77,9 @@ func TestCommander(t *testing.T) {
 				AddFlag(MakeFlag(FlagOptions[string]{
 					Name:     "hello",
 					Required: true,
-					Validate: func(in string) (string, error) {
+					Validate: func(in string) error {
 						count++
-						return "merlin", nil
+						return nil
 					},
 				}))
 
@@ -96,9 +96,9 @@ func TestCommander(t *testing.T) {
 				}).
 				AddFlag(MakeFlag(FlagOptions[string]{
 					Name: "hello",
-					Validate: func(in string) (string, error) {
+					Validate: func(in string) error {
 						check.Equal(t, in, "")
-						return "", errors.New("validation failure")
+						return errors.New("validation failure")
 					},
 				}))
 
@@ -234,7 +234,7 @@ func TestCommander(t *testing.T) {
 
 			flag := MakeFlag(FlagOptions[int]{
 				Name:     "hello",
-				Validate: func(in int) (int, error) { counter++; check.Equal(t, in, 42); return in, nil },
+				Validate: func(in int) error { counter++; check.Equal(t, in, 42); return nil },
 			})
 			check.Equal(t, "hello", flag.value.GetName())
 			cmd := MakeRootCommand(ctx).AddFlag(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
@@ -250,7 +250,7 @@ func TestCommander(t *testing.T) {
 
 			flag := MakeFlag(FlagOptions[int64]{
 				Name:     "hello",
-				Validate: func(in int64) (int64, error) { counter++; check.Equal(t, in, 42); return in, nil },
+				Validate: func(in int64) error { counter++; check.Equal(t, in, 42); return nil },
 			})
 			check.Equal(t, "hello", flag.value.GetName())
 			cmd := MakeRootCommand(ctx).AddFlag(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
@@ -266,7 +266,7 @@ func TestCommander(t *testing.T) {
 
 			flag := MakeFlag(FlagOptions[float64]{
 				Name:     "hello",
-				Validate: func(in float64) (float64, error) { counter++; check.Equal(t, in, 42); return in, nil },
+				Validate: func(in float64) error { counter++; check.Equal(t, in, 42); return nil },
 			})
 			check.Equal(t, "hello", flag.value.GetName())
 			cmd := MakeRootCommand(ctx).AddFlag(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
@@ -322,6 +322,78 @@ func TestCommander(t *testing.T) {
 			})
 			assert.NotError(t, Run(cmd, []string{t.Name()}))
 			assert.Equal(t, 1, counter)
+		})
+		t.Run("StringSlice", func(t *testing.T) {
+			counter := 0
+
+			flag := MakeFlag(FlagOptions[[]string]{
+				Name: "hello",
+				Validate: func(in []string) error {
+					counter++
+					check.Equal(t, 2, len(in))
+					return nil
+				},
+			})
+			check.Equal(t, "hello", flag.value.GetName())
+			cmd := MakeRootCommand(ctx).AddFlag(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
+				counter++
+				val := cc.StringSlice("hello")
+				check.Equal(t, val[0], "not")
+				check.Equal(t, val[1], "other")
+				return nil
+			})
+			assert.NotError(t, Run(cmd, []string{t.Name(), "--hello", "not", "--hello", "other"}))
+			assert.Equal(t, 2, counter)
+		})
+		t.Run("IntSlice", func(t *testing.T) {
+			counter := 0
+
+			flag := MakeFlag(FlagOptions[[]int]{
+				Name: "hello",
+				Validate: func(in []int) error {
+					counter++
+					check.Equal(t, 2, len(in))
+					return nil
+				},
+			})
+			cmd := MakeRootCommand(ctx).
+				AddFlag(flag).
+				SetAction(func(ctx context.Context, cc *cli.Context) error {
+					counter++
+					val := cc.IntSlice("hello")
+					assert.Equal(t, len(val), 2)
+					assert.Equal(t, val[0], 300)
+					assert.Equal(t, val[1], 100)
+					return nil
+				})
+			check.Equal(t, "hello", flag.value.GetName())
+			assert.NotError(t, Run(cmd, []string{t.Name(), "--hello", "300", "--hello", "100"}))
+			assert.Equal(t, 2, counter)
+		})
+		t.Run("Int64Slice", func(t *testing.T) {
+			counter := 0
+
+			flag := MakeFlag(FlagOptions[[]int64]{
+				Name: "hello",
+				Validate: func(in []int64) error {
+					counter++
+					check.Equal(t, 2, len(in))
+					return nil
+				},
+			})
+			cmd := MakeRootCommand(ctx).
+				AddFlag(flag).
+				SetAction(func(ctx context.Context, cc *cli.Context) error {
+					counter++
+					val := cc.Int64Slice("hello")
+					assert.Equal(t, len(val), 2)
+					assert.Equal(t, val[0], 300)
+					assert.Equal(t, val[1], 100)
+					return nil
+				})
+			check.Equal(t, "hello", flag.value.GetName())
+			assert.NotError(t, Run(cmd, []string{t.Name(), "--hello", "300", "--hello", "100"}))
+			assert.Equal(t, 2, counter)
 		})
 	})
 

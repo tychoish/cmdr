@@ -15,7 +15,6 @@ var ErrNotSet = errors.New("not set")
 // Run executes a commander with the specified command line arguments.
 func Run(c *Commander, args []string) error {
 	fun.Invariant(len(args) != 0, "must specify one or more arguments")
-	grip.Alert(args)
 	app := c.App()
 	return app.Run(args)
 }
