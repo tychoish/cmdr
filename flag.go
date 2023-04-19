@@ -7,16 +7,23 @@ import (
 
 // FlagOptions provide a generic way to generate a flag object.
 type FlagOptions[T any] struct {
-	Name        string
-	Usage       string
-	EnvVar      string
-	FilePath    string
-	Required    bool
-	Hidden      bool
-	TakesFile   bool
-	Default     T
+	Name      string
+	Usage     string
+	EnvVar    string
+	FilePath  string
+	Required  bool
+	Hidden    bool
+	TakesFile bool
+	Validate  func(T) error
+
+	// Default values are provided to the parser for many
+	// types. However, slice-types do not support default values.
+	Default T
+	// Destination provides a pointer to a variable where the flag
+	// parser will store the result. The parser only supports this
+	// for a subset of types, and this will panic if the type does
+	// not support this.
 	Destination *T
-	Validate    func(T) error
 }
 
 // Flag defines a command line flag, and is produced using the
@@ -42,6 +49,8 @@ func getValidateFunction[T any](
 	}
 }
 
+// FlagTypes defines the limited set of types which are supported by
+// the flag parsing system.
 type FlagTypes interface {
 	string | int | int64 | float64 | bool | []string | []int | []int64
 }
