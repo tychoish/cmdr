@@ -9,9 +9,7 @@ import (
 	"github.com/tychoish/fun/assert"
 	"github.com/tychoish/fun/assert/check"
 	"github.com/tychoish/fun/seq"
-	"github.com/tychoish/grip"
-	"github.com/tychoish/grip/message"
-	"github.com/tychoish/grip/send"
+	"github.com/tychoish/fun/srv"
 	"github.com/urfave/cli"
 )
 
@@ -37,7 +35,7 @@ func TestCommander(t *testing.T) {
 	defer cancel()
 
 	t.Run("Zero", func(t *testing.T) {
-		cmd := MakeRootCommand(ctx)
+		cmd := MakeCommander()
 		assert.Zero(t, cmd.numHooks())
 		assert.Zero(t, cmd.numFlags())
 		assert.Zero(t, cmd.numSubcommands())
@@ -45,7 +43,7 @@ func TestCommander(t *testing.T) {
 	t.Run("EndToEnd", func(t *testing.T) {
 		t.Run("Run", func(t *testing.T) {
 			count := 0
-			cmd := MakeRootCommand(ctx).
+			cmd := MakeCommander().
 				AddHook(func(ctx context.Context, cc *cli.Context) error {
 					count++
 					return nil
@@ -63,12 +61,12 @@ func TestCommander(t *testing.T) {
 					},
 				}))
 
-			assert.NotError(t, Run(cmd, []string{t.Name(), "--hello", "kip"}))
+			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", "kip"}))
 			assert.Equal(t, count, 2)
 		})
 		t.Run("RequiredFlag", func(t *testing.T) {
 			count := 0
-			cmd := MakeRootCommand(ctx).
+			cmd := MakeCommander().
 				SetAction(func(ctx context.Context, cc *cli.Context) error {
 					count++
 					check.Equal(t, cc.String("hello"), "merlin")
@@ -83,12 +81,12 @@ func TestCommander(t *testing.T) {
 					},
 				}))
 
-			assert.Error(t, Run(cmd, []string{t.Name()}))
+			assert.Error(t, Run(ctx, cmd, []string{t.Name()}))
 			assert.Equal(t, count, 0)
 		})
 		t.Run("ValidationFailure", func(t *testing.T) {
 			count := 0
-			cmd := MakeRootCommand(ctx).
+			cmd := MakeCommander().
 				SetAction(func(ctx context.Context, cc *cli.Context) error {
 					count++
 					check.Equal(t, cc.String("hello"), "merlin")
@@ -102,12 +100,12 @@ func TestCommander(t *testing.T) {
 					},
 				}))
 
-			assert.Error(t, Run(cmd, []string{t.Name()}))
+			assert.Error(t, Run(ctx, cmd, []string{t.Name()}))
 			assert.Equal(t, count, 0)
 		})
 		t.Run("HookAbort", func(t *testing.T) {
 			count := 0
-			cmd := MakeRootCommand(ctx).
+			cmd := MakeCommander().
 				AddHook(func(ctx context.Context, cc *cli.Context) error {
 					count++
 					check.Equal(t, cc.String("hello"), "kip")
@@ -119,60 +117,72 @@ func TestCommander(t *testing.T) {
 				}).
 				AddFlag(MakeFlag(FlagOptions[string]{Name: "hello"}))
 
-			assert.Error(t, Run(cmd, []string{t.Name(), "--hello", "kip"}))
+			assert.Error(t, Run(ctx, cmd, []string{t.Name(), "--hello", "kip"}))
 			assert.Equal(t, count, 1)
 		})
 		t.Run("Middleware", func(t *testing.T) {
-			count := 0
-			cmd := MakeRootCommand(ctx).
-				SetMiddleware(func(ctx context.Context) context.Context {
-					count++
-					return nil
-				}).
-				SetAction(func(ctx context.Context, cc *cli.Context) error {
-					if ctx != nil {
-						t.Error("middleware did not set context")
-					}
-					count++
-					return nil
-				}).
-				AddFlag(MakeFlag(FlagOptions[string]{Name: "hello"}))
-			assert.NotError(t, Run(cmd, []string{t.Name(), "--hello", "kip"}))
-			assert.Equal(t, count, 2)
+			t.Run("Panic", func(t *testing.T) {
+				count := 0
+				cmd := MakeCommander().
+					SetMiddleware(func(ctx context.Context) context.Context {
+						count++
+						return nil
+					}).
+					SetAction(func(ctx context.Context, cc *cli.Context) error {
+						if ctx != nil {
+							t.Error("middleware did not set context")
+						}
+						count++
+						return nil
+					}).
+					AddFlag(MakeFlag(FlagOptions[string]{Name: "hello"}))
+				assert.Panic(t, func() {
+					_ = Run(ctx, cmd, []string{t.Name(), "--hello", "kip"})
+				})
+
+				assert.Equal(t, count, 2)
+
+			})
+			t.Run("Succeeds", func(t *testing.T) {
+				count := 0
+				cmd := MakeCommander().
+					SetMiddleware(func(ctx context.Context) context.Context {
+						count++
+						return srv.SetBaseContext(ctx)
+					}).
+					SetAction(func(ctx context.Context, cc *cli.Context) error {
+						count++
+						assert.True(t, srv.HasBaseContext(ctx))
+						return nil
+					}).
+					AddFlag(MakeFlag(FlagOptions[string]{Name: "hello"}))
+				assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", "kip"}))
+				assert.Equal(t, count, 2)
+
+			})
+
 		})
 		t.Run("Main", func(t *testing.T) {
 			count := 0
-			cmd := MakeRootCommand(ctx).SetAction(func(ctx context.Context, cc *cli.Context) error { count++; return nil })
+			cmd := MakeCommander().SetAction(func(ctx context.Context, cc *cli.Context) error { count++; return nil })
 			assert.NotPanic(t, func() {
 				args := os.Args
 				defer func() { os.Args = args }()
 				os.Args = []string{t.Name()}
 
-				Main(cmd)
+				Main(ctx, cmd)
 			})
 			assert.Equal(t, count, 1)
 		})
 	})
 	t.Run("OperationNotDefined", func(t *testing.T) {
-		cmd := MakeRootCommand(ctx)
-		err := Run(cmd, []string{t.Name()})
+		cmd := MakeCommander()
+		err := Run(ctx, cmd, []string{t.Name()})
 		assert.ErrorIs(t, err, ErrNotDefined)
 	})
-	t.Run("LoggingPlumbing", func(t *testing.T) {
-		count := 0
-		cmd := MakeRootCommand(ctx)
-		cmd.SetSender(send.MakeFilter(grip.Sender(), func(message.Composer) { count++ }))
-		cmd.SetAction(func(ctx context.Context, _ *cli.Context) error {
-			count++
-			logger := grip.Context(ctx)
-			logger.Info("hello")
-			return nil
-		})
-		err := Run(cmd, []string{t.Name()})
-		assert.NotError(t, err)
-	})
 	t.Run("ResolutionIsIdempotent", func(t *testing.T) {
-		cmd := MakeRootCommand(ctx)
+		cmd := MakeCommander()
+		cmd.SetContext(ctx)
 		assert.Equal(t, 0, cmd.numFlags())
 		assert.Equal(t, 0, cmd.numHooks())
 		assert.Equal(t, 0, cmd.numSubcommands())
@@ -197,7 +207,7 @@ func TestCommander(t *testing.T) {
 		assert.Equal(t, len(out.Subcommands), 1)
 	})
 	t.Run("AppResolutionIsUnique", func(t *testing.T) {
-		cmd := MakeRootCommand(ctx).AddFlag(MakeFlag(FlagOptions[string]{Name: "first"})).
+		cmd := MakeCommander().AddFlag(MakeFlag(FlagOptions[string]{Name: "first"})).
 			AddHook(func(context.Context, *cli.Context) error {
 				return nil
 			}).
@@ -216,7 +226,7 @@ func TestCommander(t *testing.T) {
 				return nil
 			},
 		})
-
+		cmd.SetContext(ctx)
 		app1 := cmd.App()
 		app2 := cmd.App()
 		if app1 == app2 {
@@ -237,12 +247,12 @@ func TestCommander(t *testing.T) {
 				Validate: func(in int) error { counter++; check.Equal(t, in, 42); return nil },
 			})
 			check.Equal(t, "hello", flag.value.GetName())
-			cmd := MakeRootCommand(ctx).AddFlag(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
+			cmd := MakeCommander().AddFlag(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
 				counter++
 				check.Equal(t, 42, cc.Int("hello"))
 				return nil
 			})
-			assert.NotError(t, Run(cmd, []string{t.Name(), "--hello", "42"}))
+			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", "42"}))
 			assert.Equal(t, 2, counter)
 		})
 		t.Run("Int64", func(t *testing.T) {
@@ -253,12 +263,12 @@ func TestCommander(t *testing.T) {
 				Validate: func(in int64) error { counter++; check.Equal(t, in, 42); return nil },
 			})
 			check.Equal(t, "hello", flag.value.GetName())
-			cmd := MakeRootCommand(ctx).AddFlag(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
+			cmd := MakeCommander().AddFlag(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
 				counter++
 				check.Equal(t, 42, cc.Int64("hello"))
 				return nil
 			})
-			assert.NotError(t, Run(cmd, []string{t.Name(), "--hello", "42"}))
+			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", "42"}))
 			assert.Equal(t, 2, counter)
 		})
 		t.Run("Float64", func(t *testing.T) {
@@ -269,12 +279,12 @@ func TestCommander(t *testing.T) {
 				Validate: func(in float64) error { counter++; check.Equal(t, in, 42); return nil },
 			})
 			check.Equal(t, "hello", flag.value.GetName())
-			cmd := MakeRootCommand(ctx).AddFlag(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
+			cmd := MakeCommander().AddFlag(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
 				counter++
 				check.Equal(t, 42, cc.Float64("hello"))
 				return nil
 			})
-			assert.NotError(t, Run(cmd, []string{t.Name(), "--hello", "42"}))
+			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", "42"}))
 			assert.Equal(t, 2, counter)
 		})
 		t.Run("BoolFalse", func(t *testing.T) {
@@ -284,12 +294,12 @@ func TestCommander(t *testing.T) {
 				Name: "hello",
 			})
 			check.Equal(t, "hello", flag.value.GetName())
-			cmd := MakeRootCommand(ctx).AddFlag(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
+			cmd := MakeCommander().AddFlag(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
 				counter++
 				check.True(t, !cc.Bool("hello"))
 				return nil
 			})
-			assert.NotError(t, Run(cmd, []string{t.Name()}))
+			assert.NotError(t, Run(ctx, cmd, []string{t.Name()}))
 			assert.Equal(t, 1, counter)
 		})
 		t.Run("BoolTrue", func(t *testing.T) {
@@ -299,12 +309,12 @@ func TestCommander(t *testing.T) {
 				Name: "hello",
 			})
 			check.Equal(t, "hello", flag.value.GetName())
-			cmd := MakeRootCommand(ctx).AddFlag(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
+			cmd := MakeCommander().AddFlag(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
 				counter++
 				check.True(t, cc.Bool("hello"))
 				return nil
 			})
-			assert.NotError(t, Run(cmd, []string{t.Name(), "--hello"}))
+			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello"}))
 			assert.Equal(t, 1, counter)
 		})
 		t.Run("BoolT", func(t *testing.T) {
@@ -315,12 +325,12 @@ func TestCommander(t *testing.T) {
 				Default: true,
 			})
 			check.Equal(t, "hello", flag.value.GetName())
-			cmd := MakeRootCommand(ctx).AddFlag(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
+			cmd := MakeCommander().AddFlag(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
 				counter++
 				check.True(t, cc.BoolT("hello"))
 				return nil
 			})
-			assert.NotError(t, Run(cmd, []string{t.Name()}))
+			assert.NotError(t, Run(ctx, cmd, []string{t.Name()}))
 			assert.Equal(t, 1, counter)
 		})
 		t.Run("StringSlice", func(t *testing.T) {
@@ -335,14 +345,14 @@ func TestCommander(t *testing.T) {
 				},
 			})
 			check.Equal(t, "hello", flag.value.GetName())
-			cmd := MakeRootCommand(ctx).AddFlag(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
+			cmd := MakeCommander().AddFlag(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
 				counter++
 				val := cc.StringSlice("hello")
 				check.Equal(t, val[0], "not")
 				check.Equal(t, val[1], "other")
 				return nil
 			})
-			assert.NotError(t, Run(cmd, []string{t.Name(), "--hello", "not", "--hello", "other"}))
+			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", "not", "--hello", "other"}))
 			assert.Equal(t, 2, counter)
 		})
 		t.Run("IntSlice", func(t *testing.T) {
@@ -356,7 +366,7 @@ func TestCommander(t *testing.T) {
 					return nil
 				},
 			})
-			cmd := MakeRootCommand(ctx).
+			cmd := MakeCommander().
 				AddFlag(flag).
 				SetAction(func(ctx context.Context, cc *cli.Context) error {
 					counter++
@@ -367,7 +377,7 @@ func TestCommander(t *testing.T) {
 					return nil
 				})
 			check.Equal(t, "hello", flag.value.GetName())
-			assert.NotError(t, Run(cmd, []string{t.Name(), "--hello", "300", "--hello", "100"}))
+			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", "300", "--hello", "100"}))
 			assert.Equal(t, 2, counter)
 		})
 		t.Run("Int64Slice", func(t *testing.T) {
@@ -381,7 +391,7 @@ func TestCommander(t *testing.T) {
 					return nil
 				},
 			})
-			cmd := MakeRootCommand(ctx).
+			cmd := MakeCommander().
 				AddFlag(flag).
 				SetAction(func(ctx context.Context, cc *cli.Context) error {
 					counter++
@@ -392,7 +402,7 @@ func TestCommander(t *testing.T) {
 					return nil
 				})
 			check.Equal(t, "hello", flag.value.GetName())
-			assert.NotError(t, Run(cmd, []string{t.Name(), "--hello", "300", "--hello", "100"}))
+			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", "300", "--hello", "100"}))
 			assert.Equal(t, 2, counter)
 		})
 	})
