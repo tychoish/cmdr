@@ -123,8 +123,8 @@ func TestCommander(t *testing.T) {
 		t.Run("Middleware", func(t *testing.T) {
 			t.Run("Panic", func(t *testing.T) {
 				count := 0
-				cmd := MakeCommander().
-					SetMiddleware(func(ctx context.Context) context.Context {
+				cmd := MakeRootCommander().
+					AddMiddleware(func(ctx context.Context) context.Context {
 						count++
 						return nil
 					}).
@@ -140,13 +140,13 @@ func TestCommander(t *testing.T) {
 					_ = Run(ctx, cmd, []string{t.Name(), "--hello", "kip"})
 				})
 
-				assert.Equal(t, count, 2)
+				assert.Equal(t, count, 1)
 
 			})
 			t.Run("Succeeds", func(t *testing.T) {
 				count := 0
-				cmd := MakeCommander().
-					SetMiddleware(func(ctx context.Context) context.Context {
+				cmd := MakeRootCommander().
+					AddMiddleware(func(ctx context.Context) context.Context {
 						count++
 						return srv.SetBaseContext(ctx)
 					}).
@@ -158,9 +158,7 @@ func TestCommander(t *testing.T) {
 					AddFlag(MakeFlag(FlagOptions[string]{Name: "hello"}))
 				assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", "kip"}))
 				assert.Equal(t, count, 2)
-
 			})
-
 		})
 		t.Run("Main", func(t *testing.T) {
 			count := 0

@@ -12,7 +12,6 @@ import (
 	"github.com/tychoish/fun/erc"
 	"github.com/tychoish/fun/seq"
 	"github.com/tychoish/fun/srv"
-	"github.com/tychoish/grip"
 	"github.com/urfave/cli"
 )
 
@@ -22,16 +21,18 @@ import (
 // hooks.
 type Operation func(ctx context.Context, c *cli.Context) error
 
+type Middleware func(ctx context.Context) context.Context
+
 // Commander provides a chainable and ergonomic way of defining a
 // command.
 type Commander struct {
 	cmd        cli.Command
 	ctx        context.Context
-	middleware adt.Atomic[func(context.Context) context.Context]
 	action     adt.Atomic[Operation]
 	opts       adt.Atomic[AppOptions]
 	flags      adt.Synchronized[*seq.List[Flag]]
 	hook       adt.Synchronized[*seq.List[Operation]]
+	middleware adt.Synchronized[*seq.List[Middleware]]
 	subcmds    adt.Synchronized[*seq.List[*Commander]]
 	once       sync.Once
 }
@@ -39,32 +40,49 @@ type Commander struct {
 // CommandOptions are the arguments to create a sub-command in a
 // commander.
 type CommandOptions struct {
-	Name   string
-	Usage  string
-	Action Operation
-	Flags  []Flag
-	Hidden bool
+	Name       string
+	Usage      string
+	Action     Operation
+	Flags      []Flag
+	Hidden     bool
+	Subcommand bool
+}
+
+func MakeRootCommander() *Commander {
+	c := MakeCommander()
+	c.cmd.Name = filepath.Base(os.Args[0])
+	c.middleware.With(func(in *seq.List[Middleware]) {
+		in.PushBack(srv.SetBaseContext)
+		in.PushBack(srv.SetShutdownSignal)
+		in.PushBack(srv.WithOrchestrator)
+		in.PushBack(srv.WithCleanup)
+	})
+
+	c.cmd.After = func(_ *cli.Context) error {
+		// cancel the parent context
+		srv.GetShutdownSignal(c.ctx)()
+		return srv.GetOrchestrator(c.ctx).Wait()
+	}
+
+	return c
 }
 
 func MakeCommander() *Commander {
 	c := &Commander{}
-	c.cmd.Name = filepath.Base(os.Args[0])
 
 	c.flags.Set(&seq.List[Flag]{})
 	c.hook.Set(&seq.List[Operation]{})
 	c.subcmds.Set(&seq.List[*Commander]{})
-	c.middleware.Set(func(in context.Context) context.Context { return in })
+	c.middleware.Set(&seq.List[Middleware]{})
 
 	c.cmd.Before = func(cc *cli.Context) error {
-		// inject user context at the very end of the setup
-		defer func() { grip.Context(c.ctx).Sender().SetName(c.cmd.Name) }()
-		defer func() { c.ctx = c.middleware.Get()(c.ctx) }()
-
-		c.ctx = srv.SetBaseContext(c.ctx)
-		c.ctx = srv.SetShutdownSignal(c.ctx)
-		c.ctx = srv.WithOrchestrator(c.ctx)
-
 		ec := &erc.Collector{}
+
+		c.middleware.With(func(in *seq.List[Middleware]) {
+			ec.Add(fun.Observe(c.ctx, seq.ListValues(in.Iterator()),
+				func(mw Middleware) { c.ctx = mw(c.ctx) }))
+
+		})
 		c.hook.With(func(hooks *seq.List[Operation]) {
 			ec.Add(fun.Observe(c.ctx, seq.ListValues(hooks.Iterator()),
 				func(op Operation) { ec.Add(op(c.ctx, cc)) }))
@@ -86,14 +104,6 @@ func MakeCommander() *Commander {
 			return fmt.Errorf("action: %w", ErrNotDefined)
 		}
 		return op(c.ctx, cc)
-	}
-
-	c.cmd.After = func(_ *cli.Context) error {
-		// cancel the parent context
-		shutdown := srv.GetShutdownSignal(c.ctx)
-		shutdown()
-
-		return srv.GetOrchestrator(c.ctx).Wait()
 	}
 
 	return c
@@ -149,8 +159,8 @@ func (c *Commander) AddHook(op Operation) *Commander {
 
 // SetMiddlware allows users to modify the context passed to the hooks
 // and actions of a command.
-func (c *Commander) SetMiddleware(in func(context.Context) context.Context) *Commander {
-	c.middleware.Set(in)
+func (c *Commander) AddMiddleware(mw Middleware) *Commander {
+	c.middleware.With(func(in *seq.List[Middleware]) { in.PushBack(mw) })
 	return c
 }
 
