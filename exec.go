@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 
-	"github.com/tychoish/fun"
 	"github.com/tychoish/grip"
 )
 
@@ -15,7 +14,6 @@ var ErrNotSet = errors.New("not set")
 
 // Run executes a commander with the specified command line arguments.
 func Run(ctx context.Context, c *Commander, args []string) error {
-	fun.Invariant(len(args) != 0, "must specify one or more arguments")
 	c.SetContext(ctx)
 	app := c.App()
 	return app.Run(args)

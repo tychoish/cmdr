@@ -21,7 +21,7 @@ func (c *Commander) numFlags() int {
 
 func (c *Commander) numHooks() int {
 	var o int
-	c.hook.With(func(i *seq.List[Operation]) { o = i.Len() })
+	c.hook.With(func(i *seq.List[Action]) { o = i.Len() })
 	return o
 }
 func (c *Commander) numSubcommands() int {
@@ -63,6 +63,38 @@ func TestCommander(t *testing.T) {
 
 			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", "kip"}))
 			assert.Equal(t, count, 2)
+		})
+		t.Run("Operation", func(t *testing.T) {
+			count := 0
+			cmd := MakeCommander().
+				AddHook(func(ctx context.Context, cc *cli.Context) error {
+					count++
+					return nil
+				}).
+				AddFlag(MakeFlag(FlagOptions[string]{
+					Name: "hello",
+					Validate: func(in string) error {
+						count++
+						check.Equal(t, in, "kip")
+						return nil
+					},
+				}))
+
+			AddOperation(cmd,
+				// process command line args
+				func(ctx context.Context, cc *cli.Context) (string, error) {
+					count++
+					return cc.String("hello"), nil
+				},
+				// do the op
+				func(ctx context.Context, arg string) error {
+					check.Equal(t, arg, "kip")
+					return nil
+				},
+			)
+
+			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", "kip"}))
+			assert.Equal(t, count, 3)
 		})
 		t.Run("RequiredFlag", func(t *testing.T) {
 			count := 0
@@ -159,6 +191,35 @@ func TestCommander(t *testing.T) {
 				assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", "kip"}))
 				assert.Equal(t, count, 2)
 			})
+			t.Run("AddCommand", func(t *testing.T) {
+				count := 0
+				cmd := MakeCommander().
+					AddHook(func(ctx context.Context, cc *cli.Context) error {
+						count++
+						return nil
+					}).
+					SetAction(func(ctx context.Context, cc *cli.Context) error {
+						count++
+						check.Equal(t, cc.String("hello"), "kip")
+						return nil
+					}).
+					AddFlag(MakeFlag(FlagOptions[string]{
+						Name: "hello",
+						Validate: func(in string) error {
+							count++
+							check.Equal(t, in, "kip")
+							return nil
+						},
+					})).
+					SetContext(ctx).
+					SetName("sub")
+
+				ncmd := MakeCommander().AddCommand(cmd.Command()).SetName(t.Name())
+
+				assert.NotError(t, Run(ctx, ncmd, []string{t.Name(), "sub", "--hello", "kip"}))
+				// assert.Equal(t, count, 3)
+			})
+
 		})
 		t.Run("Main", func(t *testing.T) {
 			count := 0
@@ -188,12 +249,12 @@ func TestCommander(t *testing.T) {
 			AddHook(func(context.Context, *cli.Context) error {
 				return nil
 			}).
-			Subcommand(CommandOptions{
+			Commander(Subcommand(CommandOptions[string]{
 				Name: "second",
-				Action: func(context.Context, *cli.Context) error {
+				Operation: func(context.Context, string) error {
 					return nil
 				},
-			})
+			}))
 		assert.Equal(t, 1, cmd.numFlags())
 		assert.Equal(t, 1, cmd.numHooks())
 		assert.Equal(t, 1, cmd.numSubcommands())
@@ -212,18 +273,18 @@ func TestCommander(t *testing.T) {
 			SetAppOptions(AppOptions{
 				Name: t.Name(),
 			})
-		cmd.AddSubcommand(CommandOptions{
+		cmd.Commander(Subcommand(CommandOptions[string]{
 			Name: "second",
-			Action: func(context.Context, *cli.Context) error {
+			Operation: func(context.Context, string) error {
 				return nil
 			},
 			Flags: []Flag{MakeFlag(FlagOptions[string]{Name: "hello"})},
-		}).AddSubcommand(CommandOptions{
+		})).Commander(Subcommand(CommandOptions[string]{
 			Name: "third",
-			Action: func(context.Context, *cli.Context) error {
+			Operation: func(context.Context, string) error {
 				return nil
 			},
-		})
+		}))
 		cmd.SetContext(ctx)
 		app1 := cmd.App()
 		app2 := cmd.App()
