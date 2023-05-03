@@ -107,6 +107,65 @@ func TestCommander(t *testing.T) {
 			)
 			assert.NotEqual(t, cmd, sub)
 		})
+		t.Run("CompositeHook", func(t *testing.T) {
+			t.Run("Errors", func(t *testing.T) {
+				t.Run("Hook", func(t *testing.T) {
+					count := 0
+					cmd := MakeCommander()
+					AddOperation(cmd,
+						CompositeHook(
+							func(ctx context.Context, cc *cli.Context) (string, error) { count++; return "hi", nil },
+							func(ctx context.Context, in string) error {
+								count++
+								check.Equal(t, in, "hi")
+								return errors.New("abort")
+							},
+							func(ctx context.Context, in string) error { count++; check.Equal(t, in, "hi"); return nil },
+						),
+						// operation
+						func(ctx context.Context, in string) error { count++; check.Equal(t, in, "hi"); return nil },
+					)
+					assert.Equal(t, cmd.numHooks(), 1)
+					assert.True(t, cmd.action.Get() != nil)
+					assert.Error(t, Run(ctx, cmd, []string{"comp"}))
+					assert.Equal(t, count, 2)
+				})
+				t.Run("Constructor", func(t *testing.T) {
+					count := 0
+					cmd := MakeCommander()
+					AddOperation(cmd,
+						CompositeHook(
+							func(ctx context.Context, cc *cli.Context) (string, error) { count++; return "", errors.New("abort") },
+							func(ctx context.Context, in string) error { count++; return nil },
+						),
+						// operation
+						func(ctx context.Context, in string) error { count++; return nil },
+					)
+					assert.Equal(t, cmd.numHooks(), 1)
+					assert.True(t, cmd.action.Get() != nil)
+					assert.Error(t, Run(ctx, cmd, []string{"comp"}))
+					assert.Equal(t, count, 1)
+				})
+			})
+			t.Run("Run", func(t *testing.T) {
+				count := 0
+				cmd := MakeCommander()
+				AddOperation(cmd,
+					CompositeHook(
+						func(ctx context.Context, cc *cli.Context) (string, error) { count++; return "hi", nil },
+						func(ctx context.Context, in string) error { count++; check.Equal(t, in, "hi"); return nil },
+						func(ctx context.Context, in string) error { count++; check.Equal(t, in, "hi"); return nil },
+					),
+					// operation
+					func(ctx context.Context, in string) error { count++; check.Equal(t, in, "hi"); return nil },
+				)
+				assert.Equal(t, cmd.numHooks(), 1)
+				assert.True(t, cmd.action.Get() != nil)
+				assert.NotError(t, Run(ctx, cmd, []string{"comp"}))
+				assert.Equal(t, count, 4)
+			})
+
+		})
 		t.Run("RequiredFlag", func(t *testing.T) {
 			count := 0
 			cmd := MakeCommander().
@@ -225,7 +284,7 @@ func TestCommander(t *testing.T) {
 					SetContext(ctx).
 					SetName("sub")
 
-				ncmd := MakeCommander().AddCommand(cmd.Command()).SetName(t.Name())
+				ncmd := MakeCommander().AddUrfaveCommand(cmd.Command()).SetName(t.Name())
 
 				assert.NotError(t, Run(ctx, ncmd, []string{t.Name(), "sub", "--hello", "kip"}))
 				// assert.Equal(t, count, 3)

@@ -53,61 +53,6 @@ type Commander struct {
 	subcmds    adt.Synchronized[*seq.List[*Commander]]
 }
 
-type contextProducer func() context.Context
-
-func makeContextProducer(ctx context.Context) contextProducer {
-	return func() context.Context { return ctx }
-}
-
-func (c *Commander) getContext() context.Context { return c.ctx.Get()() }
-
-// CommandOptions are the arguments to create a sub-command in a
-// commander.
-type CommandOptions[T any] struct {
-	Name       string
-	Usage      string
-	Hook       Hook[T]
-	Operation  Operation[T]
-	Flags      []Flag
-	Hidden     bool
-	Subcommand bool
-}
-
-// AddOperation uses generics to create a hook/operation pair that
-// splits interacting with the cli.Context from the core
-// operation: the Hook creates an object--likely a structure--with the
-// data from the cli args, while the operation can use that structure
-// for the core business logic of the entry point.
-//
-// An optional number of flags can be added to the command as well.
-//
-// This form for producing operations separates the parsing of inputs
-// from the operation should serve to make these operations easier to
-// test.
-func AddOperation[T any](c *Commander, hook Hook[T], op Operation[T], flags ...Flag) *Commander {
-	var capture T
-	c.AddHook(func(ctx context.Context, cc *cli.Context) (err error) { capture, err = hook(ctx, cc); return err })
-	c.SetAction(func(ctx context.Context, _ *cli.Context) error { return op(ctx, capture) })
-
-	c.flags.With(func(in *seq.List[Flag]) {
-		for idx := range flags {
-			in.PushBack(flags[idx])
-		}
-	})
-
-	return c
-}
-
-// AddSubcommand uses the same AddOperation semantics and form, but
-// creates a new Commander adds the operation to that commander, and
-// then adds the subcommand to the provided commander, returning the
-// new subcommand.
-func AddSubcommand[T any](c *Commander, hook Hook[T], op Operation[T], flags ...Flag) *Commander {
-	sub := MakeCommander()
-	c.Commander(sub)
-	return AddOperation(sub, hook, op, flags...)
-}
-
 // MakeRootCommander constructs a root commander object with basic
 // services configured. From the tychoish/fun/srv package, this
 // pre-populates a base context, shutdown signal, service
@@ -196,34 +141,9 @@ func (c *Commander) Commander(sub *Commander) *Commander {
 	return c
 }
 
-// Subcommand creates a new commander as a sub-command returning the
-// new subcommander. Typically you could use this as:
-//
-//	c := cmdr.MakeRootCommand().
-//	       Commander(Subcommand(optsOne).SetName("one")).
-//	       Commander(Subcommand(optsTwo).SetName("two"))
-func Subcommand[T any](opts CommandOptions[T]) *Commander {
-	sub := MakeCommander()
-	sub.name.Set(opts.Name)
-
-	fun.Invariant(opts.Operation != nil, "operation must not be nil")
-
-	sub.cmd.Name = opts.Name
-	sub.cmd.Usage = opts.Usage
-	sub.cmd.Hidden = opts.Hidden
-
-	for idx := range opts.Flags {
-		sub.AddFlag(opts.Flags[idx])
-	}
-
-	AddOperation(sub, opts.Hook, opts.Operation)
-
-	return sub
-}
-
-// AddCommand directly adds a sub command as a cli.Command to the
-// object.
-func (c *Commander) AddCommand(cc cli.Command) *Commander {
+// AddUrfaveCommand directly adds a urfae/cli.Command as a subcommand
+// to the Commander.
+func (c *Commander) AddUrfaveCommand(cc cli.Command) *Commander {
 	sub := MakeCommander()
 	sub.cmd = cc
 	return c.Commander(sub)
@@ -232,6 +152,19 @@ func (c *Commander) AddCommand(cc cli.Command) *Commander {
 // AddFlag adds a command-line flag in the specified command.
 func (c *Commander) AddFlag(flag Flag) *Commander {
 	c.flags.With(func(in *seq.List[Flag]) { in.PushBack(flag) })
+	return c
+}
+
+// AddFlags adds one or more flags to the commander.
+func (c *Commander) AddFlags(flags ...Flag) *Commander { return c.AppendFlags(flags) }
+
+// AppendFlags adds a slice of flags to the commander.
+func (c *Commander) AppendFlags(flags []Flag) *Commander {
+	c.flags.With(func(in *seq.List[Flag]) {
+		for idx := range flags {
+			in.PushBack(flags[idx])
+		}
+	})
 	return c
 }
 
@@ -302,6 +235,8 @@ func (c *Commander) SetContext(ctx context.Context) *Commander {
 	return c
 }
 
+func (c *Commander) getContext() context.Context { return c.ctx.Get()() }
+
 // App resolves a command object from the commander and the provided
 // options. You must set the context on the Commander using the
 // SetContext before calling this command directly.
@@ -326,11 +261,4 @@ func (c *Commander) App() *cli.App {
 	app.Before = cmd.Before
 
 	return app
-}
-
-func setWhenNotZero[T comparable](a, b T) T {
-	if fun.IsZero(a) {
-		return b
-	}
-	return a
 }
