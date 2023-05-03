@@ -79,13 +79,33 @@ type CommandOptions[T any] struct {
 // data from the cli args, while the operation can use that structure
 // for the core business logic of the entry point.
 //
+// An optional number of flags can be added to the command as well.
+//
 // This form for producing operations separates the parsing of inputs
 // from the operation should serve to make these operations easier to
 // test.
-func AddOperation[T any](c *Commander, hook Hook[T], op Operation[T]) {
+func AddOperation[T any](c *Commander, hook Hook[T], op Operation[T], flags ...Flag) *Commander {
 	var capture T
 	c.AddHook(func(ctx context.Context, cc *cli.Context) (err error) { capture, err = hook(ctx, cc); return err })
 	c.SetAction(func(ctx context.Context, _ *cli.Context) error { return op(ctx, capture) })
+
+	c.flags.With(func(in *seq.List[Flag]) {
+		for idx := range flags {
+			in.PushBack(flags[idx])
+		}
+	})
+
+	return c
+}
+
+// AddSubcommand uses the same AddOperation semantics and form, but
+// creates a new Commander adds the operation to that commander, and
+// then adds the subcommand to the provided commander, returning the
+// new subcommand.
+func AddSubcommand[T any](c *Commander, hook Hook[T], op Operation[T], flags ...Flag) *Commander {
+	sub := MakeCommander()
+	c.Commander(sub)
+	return AddOperation(sub, hook, op, flags...)
 }
 
 // MakeRootCommander constructs a root commander object with basic
@@ -169,13 +189,19 @@ func MakeCommander() *Commander {
 
 func (c *Commander) SetName(n string) *Commander { c.name.Set(n); return c }
 
-// Commander adds a subcommander, returning the original paren
+// Commander adds a subcommander, returning the original parent
+// commander object.
 func (c *Commander) Commander(sub *Commander) *Commander {
 	c.subcmds.With(func(in *seq.List[*Commander]) { in.PushBack(sub) })
 	return c
 }
 
-// Subcommand creates a new commander as a sub-command.
+// Subcommand creates a new commander as a sub-command returning the
+// new subcommander. Typically you could use this as:
+//
+//	c := cmdr.MakeRootCommand().
+//	       Commander(Subcommand(optsOne).SetName("one")).
+//	       Commander(Subcommand(optsTwo).SetName("two"))
 func Subcommand[T any](opts CommandOptions[T]) *Commander {
 	sub := MakeCommander()
 	sub.name.Set(opts.Name)

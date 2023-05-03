@@ -83,6 +83,7 @@ func TestCommander(t *testing.T) {
 			AddOperation(cmd,
 				// process command line args
 				func(ctx context.Context, cc *cli.Context) (string, error) {
+					check.Equal(t, cc.String("world"), "merlin")
 					count++
 					return cc.String("hello"), nil
 				},
@@ -91,10 +92,20 @@ func TestCommander(t *testing.T) {
 					check.Equal(t, arg, "kip")
 					return nil
 				},
-			)
+				// flags
+				MakeFlag(FlagOptions[string]{Name: "world, w", Default: "merlin"}),
+			).SetName(t.Name())
 
 			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", "kip"}))
 			assert.Equal(t, count, 3)
+		})
+		t.Run("AddSubcommand", func(t *testing.T) {
+			cmd := MakeRootCommander()
+			sub := AddSubcommand(cmd,
+				func(ctx context.Context, cc *cli.Context) (string, error) { return "", nil },
+				func(ctx context.Context, in string) error { return nil },
+			)
+			assert.NotEqual(t, cmd, sub)
 		})
 		t.Run("RequiredFlag", func(t *testing.T) {
 			count := 0
