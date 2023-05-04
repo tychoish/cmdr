@@ -158,9 +158,9 @@ func (c *Commander) SetContext(ctx context.Context) *Commander {
 
 func (c *Commander) getContext() context.Context { return c.ctx.Get()() }
 
-// Commander adds a subcommander, returning the original parent
+// AddSubcommand adds a subcommander, returning the original parent
 // commander object.
-func (c *Commander) Commander(sub *Commander) *Commander {
+func (c *Commander) AddSubcommand(sub *Commander) *Commander {
 	c.subcmds.With(func(in *seq.List[*Commander]) { in.PushBack(sub) })
 	return c
 }
@@ -188,7 +188,7 @@ func (c *Commander) Commander(sub *Commander) *Commander {
 func (c *Commander) AddUrfaveCommand(cc cli.Command) *Commander {
 	sub := MakeCommander()
 	sub.cmd = cc
-	return c.Commander(sub)
+	return c.AddSubcommand(sub)
 }
 
 // AddFlag adds a command-line flag in the specified command.

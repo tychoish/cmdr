@@ -152,7 +152,7 @@ func AddOperation[T any](c *Commander, hook Hook[T], op Operation[T], flags ...F
 // new subcommand.
 func AddSubcommand[T any](c *Commander, hook Hook[T], op Operation[T], flags ...Flag) *Commander {
 	sub := MakeCommander()
-	c.Commander(sub)
+	c.AddSubcommand(sub)
 	return AddOperation(sub, hook, op, flags...)
 }
 
@@ -184,12 +184,12 @@ func (opts CommandOptions[T]) Add(c *Commander) {
 	AddOperation(c, opts.Hook, opts.Operation, opts.Flags...)
 }
 
-// Subcommand creates a new commander as a sub-command returning the
+// MakeCommand creates a new commander as a sub-command returning the
 // new subcommander. Typically you could use this as:
 //
 //	c := cmdr.MakeRootCommand().
-//	       Commander(Subcommand(optsOne).SetName("one")).
-//	       Commander(Subcommand(optsTwo).SetName("two"))
-func Subcommand[T any](opts CommandOptions[T]) *Commander {
+//	       Commander(MakeCommand(optsOne).SetName("one")).
+//	       Commander(MakeCommand(optsTwo).SetName("two"))
+func MakeCommand[T any](opts CommandOptions[T]) *Commander {
 	return MakeCommander().With(opts.Add)
 }

@@ -63,7 +63,7 @@ func TestCommander(t *testing.T) {
 			assert.ErrorIs(t, err, ErrNotDefined)
 		})
 		t.Run("DefineSubcommand", func(t *testing.T) {
-			cmd := MakeCommander().SetContext(ctx).Commander(MakeCommander())
+			cmd := MakeCommander().SetContext(ctx).AddSubcommand(MakeCommander())
 			err := cmd.App().Run([]string{"hello"})
 			assert.NotError(t, err)
 		})
@@ -423,7 +423,7 @@ func TestCommander(t *testing.T) {
 			AddHook(func(context.Context, *cli.Context) error {
 				return nil
 			}).
-			Commander(Subcommand(CommandOptions[string]{
+			AddSubcommand(Subcommand(CommandOptions[string]{
 				Name: "second",
 				Operation: func(context.Context, string) error {
 					return nil
@@ -447,13 +447,13 @@ func TestCommander(t *testing.T) {
 			SetAppOptions(AppOptions{
 				Name: t.Name(),
 			})
-		cmd.Commander(Subcommand(CommandOptions[string]{
+		cmd.AddSubcommand(Subcommand(CommandOptions[string]{
 			Name: "second",
 			Operation: func(context.Context, string) error {
 				return nil
 			},
 			Flags: []Flag{MakeFlag(FlagOptions[string]{Name: "hello"})},
-		})).Commander(Subcommand(CommandOptions[string]{
+		})).AddSubcommand(Subcommand(CommandOptions[string]{
 			Name: "third",
 			Operation: func(context.Context, string) error {
 				return nil
