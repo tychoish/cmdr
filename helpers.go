@@ -60,18 +60,10 @@ func (spec *OperationSpec[T]) AddHooks(hook ...Operation[T]) *OperationSpec[T] {
 	return spec
 }
 
-// AddOperationSpec adds an operation to a Commander (and returns the
-// commander.) The OperationSpec makes it possible to define (most) of
-// the operation using strongly typed operations, while passing state
-// directly. A single object of the type T is captured between the
-// function calls.
-//
-// Because the operation spec builds hooks, middleware, and operations
-// and adds these functions to the convert, it's possible to use
-// AddOperationSpec more than once on a single command. However, there
-// is only ever one action on a commander, so the last non-nil Action
-// specified will be used.
-func AddOperationSpec[T any](c *Commander, spec *OperationSpec[T]) *Commander {
+// Add is an option end of a spec builder chain, that adds the chain
+// to the provided Commander. Use this directly or indirectly with the
+// Commander.With method.
+func (spec *OperationSpec[T]) Add(c *Commander) {
 	var out T
 	c.AddHook(func(ctx context.Context, cc *cli.Context) (err error) {
 		out, err = spec.Constructor(ctx, cc)
@@ -98,8 +90,21 @@ func AddOperationSpec[T any](c *Commander, spec *OperationSpec[T]) *Commander {
 			return spec.Action(ctx, out)
 		})
 	}
+}
 
-	return c
+// AddOperationSpec adds an operation to a Commander (and returns the
+// commander.) The OperationSpec makes it possible to define (most) of
+// the operation using strongly typed operations, while passing state
+// directly. A single object of the type T is captured between the
+// function calls.
+//
+// Because the operation spec builds hooks, middleware, and operations
+// and adds these functions to the convert, it's possible to use
+// AddOperationSpec more than once on a single command. However, there
+// is only ever one action on a commander, so the last non-nil Action
+// specified will be used.
+func AddOperationSpec[T any](c *Commander, spec *OperationSpec[T]) *Commander {
+	return c.With(spec.Add)
 }
 
 // CompositeHook builds a Hook for use with AddOperation and
@@ -135,11 +140,10 @@ func CompositeHook[T any](constr Hook[T], ops ...Operation[T]) Hook[T] {
 // from the operation should serve to make these operations easier to
 // test.
 func AddOperation[T any](c *Commander, hook Hook[T], op Operation[T], flags ...Flag) *Commander {
-	c.AddFlags(flags...)
-	return AddOperationSpec(c, &OperationSpec[T]{
+	return c.AddFlags(flags...).With((&OperationSpec[T]{
 		Constructor: hook,
 		Action:      op,
-	})
+	}).Add)
 }
 
 // AddSubcommand uses the same AddOperation semantics and form, but
@@ -165,6 +169,21 @@ type CommandOptions[T any] struct {
 	Subcommand bool
 }
 
+// Add modifies the provided commander with the options and operation
+// defined by the CommandOptions. Use in combination with the
+// Command.With method.
+func (opts CommandOptions[T]) Add(c *Commander) {
+	c.name.Set(opts.Name)
+
+	fun.Invariant(opts.Operation != nil, "operation must not be nil")
+
+	c.cmd.Name = opts.Name
+	c.cmd.Usage = opts.Usage
+	c.cmd.Hidden = opts.Hidden
+
+	AddOperation(c, opts.Hook, opts.Operation, opts.Flags...)
+}
+
 // Subcommand creates a new commander as a sub-command returning the
 // new subcommander. Typically you could use this as:
 //
@@ -172,16 +191,5 @@ type CommandOptions[T any] struct {
 //	       Commander(Subcommand(optsOne).SetName("one")).
 //	       Commander(Subcommand(optsTwo).SetName("two"))
 func Subcommand[T any](opts CommandOptions[T]) *Commander {
-	sub := MakeCommander()
-	sub.name.Set(opts.Name)
-
-	fun.Invariant(opts.Operation != nil, "operation must not be nil")
-
-	sub.cmd.Name = opts.Name
-	sub.cmd.Usage = opts.Usage
-	sub.cmd.Hidden = opts.Hidden
-
-	AddOperation(sub, opts.Hook, opts.Operation, opts.Flags...)
-
-	return sub
+	return MakeCommander().With(opts.Add)
 }

@@ -225,6 +225,10 @@ func (c *Commander) AddMiddleware(mw Middleware) *Commander {
 	return c
 }
 
+// With makes it possible to embed helper functions in a Commander
+// chain directly.
+func (c *Commander) With(op func(c *Commander)) *Commander { op(c); return c }
+
 // Command resolves the commander into a cli.Command instance. This
 // operation is safe to call more options.
 //
