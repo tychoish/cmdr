@@ -7,16 +7,89 @@ import (
 	"github.com/urfave/cli"
 )
 
+// Hook generates an object, typically a configuration struct, from
+// the cli.Context provided. Hooks are always processed first, before
+// middleware and the main opreation.
+type Hook[T any] func(context.Context, *cli.Context) (T, error)
+
+// Operation takes a value, produced by Hook[T], and executes the
+// function.
+type Operation[T any] func(context.Context, T) error
+
+// OperationSpec defines a set of functions that The AddOperationSpec
+// functions use to modify a Commander. Unlike using the commander
+// directly, these operations make it possible to
+type OperationSpec[T any] struct {
+	// Constructor is required and constructs the output object
+	// for the operation.
+	Constructor Hook[T]
+	// Middlware is optional and makes it possible to attach T to
+	// a context for later use. Middlewares
+	Middleware func(context.Context, T) context.Context
+	// Operations provide a sequence of type-specialized hooks
+	// that you can use to post-process the constructed object,
+	// particularly if T is mutable. These run after the
+	// constructor during the "hook"
+	Operations []Operation[T]
+	// Action may be (optionally) specified here as an Operation
+	// or directly on the command.
+	Action Operation[T]
+}
+
+// AddOperationSpec adds an operation to a Commander (and returns the
+// commander.) The OperationSpec makes it possible to define (most) of
+// the operation using strongly typed operations, while passing state
+// directly. A single object of the type T is captured between the
+// function calls.
+//
+// Because the operation spec builds hooks, middleware, and operations
+// and adds these functions to the convert, it's possible to use
+// AddOperationSpec more than once on a single command. However, there
+// is only ever one action on a commander, so the last non-nil Action
+// specified will be used.
+func AddOperationSpec[T any](c *Commander, spec OperationSpec[T]) *Commander {
+	var out T
+	c.AddHook(func(ctx context.Context, cc *cli.Context) (err error) {
+		out, err = spec.Constructor(ctx, cc)
+		if err != nil {
+			return err
+		}
+
+		for idx := range spec.Operations {
+			if err := spec.Operations[idx](ctx, out); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+
+	if spec.Middleware != nil {
+		c.AddMiddleware(func(ctx context.Context) context.Context {
+			return spec.Middleware(ctx, out)
+		})
+	}
+
+	if spec.Action != nil {
+		c.SetAction(func(ctx context.Context, _ *cli.Context) error {
+			return spec.Action(ctx, out)
+		})
+	}
+
+	return c
+}
+
 // CompositeHook builds a Hook for use with AddOperation and
 // AddSubcommand that allows for factorking. When T is a mutable type,
 // you can use these composite hooks to process and validate
 // incrementally.
 func CompositeHook[T any](constr Hook[T], ops ...Operation[T]) Hook[T] {
-	return func(ctx context.Context, cc *cli.Context) (T, error) {
-		out, err := constr(ctx, cc)
+	var out T
+	return func(ctx context.Context, cc *cli.Context) (_ T, err error) {
+		out, err = constr(ctx, cc)
 		if err != nil {
 			return fun.ZeroOf[T](), err
 		}
+
 		for idx := range ops {
 			if err := ops[idx](ctx, out); err != nil {
 				return fun.ZeroOf[T](), err
@@ -38,13 +111,11 @@ func CompositeHook[T any](constr Hook[T], ops ...Operation[T]) Hook[T] {
 // from the operation should serve to make these operations easier to
 // test.
 func AddOperation[T any](c *Commander, hook Hook[T], op Operation[T], flags ...Flag) *Commander {
-	var capture T
-
-	c.AddHook(func(ctx context.Context, cc *cli.Context) (err error) { capture, err = hook(ctx, cc); return err })
-	c.SetAction(func(ctx context.Context, _ *cli.Context) error { return op(ctx, capture) })
 	c.AddFlags(flags...)
-
-	return c
+	return AddOperationSpec(c, OperationSpec[T]{
+		Constructor: hook,
+		Action:      op,
+	})
 }
 
 // AddSubcommand uses the same AddOperation semantics and form, but
@@ -65,6 +136,7 @@ type CommandOptions[T any] struct {
 	Hook       Hook[T]
 	Operation  Operation[T]
 	Flags      []Flag
+	Middleware func(context.Context, T) context.Context
 	Hidden     bool
 	Subcommand bool
 }

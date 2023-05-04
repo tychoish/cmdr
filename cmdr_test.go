@@ -3,6 +3,7 @@ package cmdr
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/tychoish/fun/assert/check"
 	"github.com/tychoish/fun/seq"
 	"github.com/tychoish/fun/srv"
+	"github.com/tychoish/fun/testt"
 	"github.com/urfave/cli"
 )
 
@@ -24,6 +26,12 @@ func (c *Commander) numHooks() int {
 	c.hook.With(func(i *seq.List[Action]) { o = i.Len() })
 	return o
 }
+func (c *Commander) numMiddleware() int {
+	var o int
+	c.middleware.With(func(i *seq.List[Middleware]) { o = i.Len() })
+	return o
+}
+
 func (c *Commander) numSubcommands() int {
 	var o int
 	c.subcmds.With(func(i *seq.List[*Commander]) { o = i.Len() })
@@ -35,10 +43,30 @@ func TestCommander(t *testing.T) {
 	defer cancel()
 
 	t.Run("Zero", func(t *testing.T) {
-		cmd := MakeCommander()
-		assert.Zero(t, cmd.numHooks())
-		assert.Zero(t, cmd.numFlags())
-		assert.Zero(t, cmd.numSubcommands())
+		t.Run("Init", func(t *testing.T) {
+			cmd := MakeCommander()
+			assert.Zero(t, cmd.numHooks())
+			assert.Zero(t, cmd.numFlags())
+			assert.Zero(t, cmd.numSubcommands())
+		})
+		t.Run("ExpectedPanic", func(t *testing.T) {
+			cmd := MakeCommander()
+			assert.Panic(t, func() {
+				// for context reasons
+				_ = cmd.App().Run([]string{"hello"})
+			})
+		})
+		t.Run("ErrorUndefined", func(t *testing.T) {
+			cmd := MakeCommander().SetContext(ctx)
+			err := cmd.App().Run([]string{"hello"})
+			assert.Error(t, err)
+			assert.ErrorIs(t, err, ErrNotDefined)
+		})
+		t.Run("DefineSubcommand", func(t *testing.T) {
+			cmd := MakeCommander().SetContext(ctx).Commander(MakeCommander())
+			err := cmd.App().Run([]string{"hello"})
+			assert.NotError(t, err)
+		})
 	})
 	t.Run("EndToEnd", func(t *testing.T) {
 		t.Run("Run", func(t *testing.T) {
@@ -107,29 +135,74 @@ func TestCommander(t *testing.T) {
 			)
 			assert.NotEqual(t, cmd, sub)
 		})
-		t.Run("CompositeHook", func(t *testing.T) {
-			t.Run("Errors", func(t *testing.T) {
-				t.Run("Hook", func(t *testing.T) {
-					count := 0
-					cmd := MakeCommander()
-					AddOperation(cmd,
-						CompositeHook(
-							func(ctx context.Context, cc *cli.Context) (string, error) { count++; return "hi", nil },
-							func(ctx context.Context, in string) error {
-								count++
-								check.Equal(t, in, "hi")
-								return errors.New("abort")
-							},
-							func(ctx context.Context, in string) error { count++; check.Equal(t, in, "hi"); return nil },
-						),
-						// operation
-						func(ctx context.Context, in string) error { count++; check.Equal(t, in, "hi"); return nil },
-					)
-					assert.Equal(t, cmd.numHooks(), 1)
-					assert.True(t, cmd.action.Get() != nil)
-					assert.Error(t, Run(ctx, cmd, []string{"comp"}))
-					assert.Equal(t, count, 2)
+		t.Run("OperationSpec", func(t *testing.T) {
+			t.Run("Basic", func(t *testing.T) {
+				count := 0
+				cmd := MakeCommander()
+				AddOperationSpec(cmd, OperationSpec[string]{
+					Constructor: func(ctx context.Context, cc *cli.Context) (string, error) { count++; return "hi", nil },
+					Operations: []Operation[string]{
+						func(ctx context.Context, in string) error {
+							count++
+							check.Equal(t, in, "hi")
+							return nil
+						},
+					},
+					Middleware: func(ctx context.Context, in string) context.Context {
+						count++
+						check.Equal(t, in, "hi")
+						return ctx
+					},
+					Action: func(ctx context.Context, in string) error { count++; check.Equal(t, in, "hi"); return nil },
 				})
+				assert.Equal(t, cmd.numHooks(), 1)
+				assert.Equal(t, cmd.numMiddleware(), 1)
+				assert.True(t, cmd.action.Get() != nil)
+				assert.NotError(t, Run(ctx, cmd, []string{"comp"}))
+				assert.Equal(t, count, 4)
+			})
+			t.Run("HookErrorAborts", func(t *testing.T) {
+				count := 0
+				cmd := MakeCommander()
+				AddOperationSpec(cmd, OperationSpec[string]{
+					Constructor: func(ctx context.Context, cc *cli.Context) (string, error) { count++; return "hi", nil },
+					Operations: []Operation[string]{func(ctx context.Context, in string) error {
+						count++
+						check.Equal(t, in, "hi")
+						return errors.New("abort")
+					},
+					},
+					Action: func(ctx context.Context, in string) error { count++; check.Equal(t, in, "hi"); return nil },
+				})
+				assert.Equal(t, cmd.numHooks(), 1)
+				assert.True(t, cmd.action.Get() != nil)
+				assert.Error(t, Run(ctx, cmd, []string{"comp"}))
+				assert.Equal(t, count, 2)
+			})
+		})
+		t.Run("CompositeHook", func(t *testing.T) {
+			t.Run("Hook", func(t *testing.T) {
+				count := 0
+				cmd := MakeCommander()
+				AddOperation(cmd,
+					CompositeHook(
+						func(ctx context.Context, cc *cli.Context) (string, error) { count++; return "hi", nil },
+						func(ctx context.Context, in string) error {
+							count++
+							check.Equal(t, in, "hi")
+							return errors.New("abort")
+						},
+						func(ctx context.Context, in string) error { count++; check.Equal(t, in, "hi"); return nil },
+					),
+					// operation
+					func(ctx context.Context, in string) error { count++; check.Equal(t, in, "hi"); return nil },
+				)
+				assert.Equal(t, cmd.numHooks(), 1)
+				assert.True(t, cmd.action.Get() != nil)
+				assert.Error(t, Run(ctx, cmd, []string{"comp"}))
+				assert.Equal(t, count, 2)
+			})
+			t.Run("Errors", func(t *testing.T) {
 				t.Run("Constructor", func(t *testing.T) {
 					count := 0
 					cmd := MakeCommander()
@@ -543,10 +616,47 @@ func TestCommander(t *testing.T) {
 				a = "first"
 				b = "second"
 			)
-			check.Equal(t, a, setWhenNotZero("", a))
-			check.Equal(t, a, setWhenNotZero(a, b))
-			check.Equal(t, b, setWhenNotZero("", b))
-			check.Equal(t, "", setWhenNotZero("", ""))
+			check.Equal(t, a, secondValueWhenFirstIsZero("", a))
+			check.Equal(t, a, secondValueWhenFirstIsZero(a, b))
+			check.Equal(t, b, secondValueWhenFirstIsZero("", b))
+			check.Equal(t, "", secondValueWhenFirstIsZero("", ""))
+		})
+		t.Run("PostProcessAction", func(t *testing.T) {
+			t.Run("Converers", func(t *testing.T) {
+				var called bool
+				for _, action := range []any{
+					func(context.Context) error { called = true; return nil },
+					func(*cli.Context) error { called = true; return nil },
+					func(context.Context, *cli.Context) error { called = true; return nil },
+					func() error { called = true; return nil },
+					func(context.Context) { called = true },
+					func() { called = true },
+				} {
+					assert.True(t, !called)
+					assert.True(t, action != nil)
+					cmds := []cli.Command{{Action: action}}
+					reformCommands(ctx, cmds)
+					assert.True(t, cmds[0].Action != nil)
+					op, ok := cmds[0].Action.(func(*cli.Context) error)
+					testt.Logf(t, "%T", cmds[0].Action)
+					assert.True(t, ok)
+					assert.NotError(t, op(nil))
+					assert.True(t, called)
+					called = false
+				}
+			})
+			t.Run("Nil", func(t *testing.T) {
+				cmd := cli.Command{Action: nil}
+				reformCommands(ctx, []cli.Command{cmd})
+				assert.True(t, cmd.Action == nil)
+			})
+			t.Run("Passthrough", func(t *testing.T) {
+				act := func(*cli.Context) error { return errors.New("foo") }
+				cmd := []cli.Command{{Action: act}}
+				reformCommands(ctx, cmd)
+				assert.Equal(t, fmt.Sprintf("%p", act), fmt.Sprintf("%p", cmd[0].Action))
+			})
+
 		})
 	})
 }

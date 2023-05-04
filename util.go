@@ -6,7 +6,7 @@ import (
 	"github.com/tychoish/fun"
 )
 
-func setWhenNotZero[T comparable](a, b T) T {
+func secondValueWhenFirstIsZero[T comparable](a, b T) T {
 	if fun.IsZero(a) {
 		return b
 	}

@@ -27,19 +27,28 @@ import (
 type Action func(ctx context.Context, c *cli.Context) error
 
 // Middleware processes the context, attaching timeouts, or values as
-// needed.
+// needed. Middlware is processed after hooks but before the operation.
 type Middleware func(ctx context.Context) context.Context
-
-// Hook generates an object, typically a configuration struct, from
-// the cli.Context provided.
-type Hook[T any] func(context.Context, *cli.Context) (T, error)
-
-// Operation takes a value, produced by Hook[T], and executes the
-// function.
-type Operation[T any] func(context.Context, T) error
 
 // Commander provides a chainable and ergonomic way of defining a
 // command.
+//
+// The Commander objects largely mirror the semantics of the
+// underlying cli library, which handles execution at runtime. Future
+// versions may use different underlying tools.
+//
+// Commander provides a strong integration with the
+// github.com/tychoish/fun/srv package's service orchestration
+// framework. A service orchestrator is created and runs during the
+// execution of the program and users can add services and rely
+// on Commander to shut down the orchestrator service and wait for
+// running services to return before returning.
+//
+// Commanders provide an integrated and strongly typed method for
+// defining setup and configuration before running the command
+// itself. For cleanup after the main operation finishes use the
+// github.com/tychoish/fun/srv package's srv.AddCleanupHook() and
+// srv.AddCleanupError().
 type Commander struct {
 	cmd        cli.Command
 	ctx        adt.Atomic[contextProducer]
@@ -95,18 +104,18 @@ func MakeCommander() *Commander {
 
 		ctx := c.getContext()
 
-		c.middleware.With(func(in *seq.List[Middleware]) {
-			ec.Add(fun.Observe(ctx, seq.ListValues(in.Iterator()),
-				func(mw Middleware) { ctx = mw(ctx) }))
-		})
-
 		c.hook.With(func(hooks *seq.List[Action]) {
 			ec.Add(fun.Observe(ctx, seq.ListValues(hooks.Iterator()),
 				func(op Action) { ec.Add(op(ctx, cc)) }))
 		})
 
-		c.flags.With(func(hooks *seq.List[Flag]) {
-			ec.Add(fun.Observe(ctx, seq.ListValues(hooks.Iterator()),
+		c.middleware.With(func(in *seq.List[Middleware]) {
+			ec.Add(fun.Observe(ctx, seq.ListValues(in.Iterator()),
+				func(mw Middleware) { ctx = mw(ctx) }))
+		})
+
+		c.flags.With(func(flags *seq.List[Flag]) {
+			ec.Add(fun.Observe(ctx, seq.ListValues(flags.Iterator()),
 				func(fl Flag) {
 					if fl.validate != nil {
 						ec.Add(fl.validate(cc))
@@ -121,20 +130,33 @@ func MakeCommander() *Commander {
 
 	c.cmd.Action = func(cc *cli.Context) error {
 		op := c.action.Get()
-		if op == nil {
-			if c.subcmds.Get().Len() == 0 {
-				return fmt.Errorf("action: %w", ErrNotDefined)
-			}
-			return nil
+		if op != nil {
+			return op(c.getContext(), cc)
 		}
-		return op(c.getContext(), cc)
+		if c.subcmds.Get().Len() == 0 {
+			return fmt.Errorf("action: %w", ErrNotDefined)
+		}
+		return nil
 	}
 
 	return c
 }
 
+// SetAction defines the core operation for the commander.
+func (c *Commander) SetAction(in Action) *Commander { c.action.Set(in); return c }
+
 func (c *Commander) SetName(n string) *Commander  { c.name.Set(n); return c }
 func (c *Commander) SetUsage(u string) *Commander { c.usage.Set(u); return c }
+
+// SetContext attaches a context to the commander. This is only needed
+// if you are NOT using the commander with the Run() or Main()
+// methods.
+func (c *Commander) SetContext(ctx context.Context) *Commander {
+	c.ctx.Set(makeContextProducer(ctx))
+	return c
+}
+
+func (c *Commander) getContext() context.Context { return c.ctx.Get()() }
 
 // Commander adds a subcommander, returning the original parent
 // commander object.
@@ -145,6 +167,24 @@ func (c *Commander) Commander(sub *Commander) *Commander {
 
 // AddUrfaveCommand directly adds a urfae/cli.Command as a subcommand
 // to the Commander.
+//
+// Commanders do not modify the raw subcommands added in this way,
+// with one exception. Because cli.Command.Action is untyped and it
+// may be reasonable to add Action functions with different
+// signatures, the Commander will attempt to convert common function
+// to `func(*cli.Context) error` functions and avert the error.
+//
+// Comander will convert Action functions of following types:
+//
+//	func(context.Context) error
+//	func(context.Context, *cli.Context) error
+//	func(context.Context)
+//	func() error
+//	func()
+//
+// The commander processes the sub commands recursively. All wrapping
+// happens when building the cli.App/cli.Command for the converter,
+// and has limited overhead.
 func (c *Commander) AddUrfaveCommand(cc cli.Command) *Commander {
 	sub := MakeCommander()
 	sub.cmd = cc
@@ -185,9 +225,6 @@ func (c *Commander) AddMiddleware(mw Middleware) *Commander {
 	return c
 }
 
-// SetAction defines the core operation for the commander.
-func (c *Commander) SetAction(in Action) *Commander { c.action.Set(in); return c }
-
 // Command resolves the commander into a cli.Command instance. This
 // operation is safe to call more options.
 //
@@ -198,8 +235,8 @@ func (c *Commander) Command() cli.Command {
 		ctx := c.getContext()
 		fun.Invariant(ctx != nil, "context must be set when calling command")
 
-		c.cmd.Name = c.name.Get()
-		c.cmd.Usage = c.usage.Get()
+		c.cmd.Name = secondValueWhenFirstIsZero(c.cmd.Name, c.name.Get())
+		c.cmd.Usage = secondValueWhenFirstIsZero(c.cmd.Usage, c.usage.Get())
 
 		c.flags.With(func(in *seq.List[Flag]) {
 			fun.InvariantMust(fun.Observe(ctx, seq.ListValues(in.Iterator()), func(v Flag) {
@@ -213,9 +250,37 @@ func (c *Commander) Command() cli.Command {
 				c.cmd.Subcommands = append(c.cmd.Subcommands, v.Command())
 			}))
 		})
+		reformCommands(ctx, []cli.Command{c.cmd})
 	})
 
 	return c.cmd
+}
+
+func reformCommands(ctx context.Context, cmds []cli.Command) {
+	for idx := range cmds {
+		switch cc := cmds[idx].Action.(type) {
+		case nil:
+			// top level commands often don't have actions
+			// of their own. That's fine.
+		case func(*cli.Context) error:
+			// this is the correct form but we should
+			// recurse through subcommands later
+		case func(context.Context) error:
+			cmds[idx].Action = func(_ *cli.Context) error { return cc(ctx) }
+		case func(context.Context, *cli.Context) error:
+			cmds[idx].Action = func(c *cli.Context) error { return cc(ctx, c) }
+		case func(context.Context):
+			cmds[idx].Action = func(_ *cli.Context) error { cc(ctx); return nil }
+		case func() error:
+			cmds[idx].Action = func(_ *cli.Context) error { return cc() }
+		case func():
+			cmds[idx].Action = func(_ *cli.Context) error { cc(); return nil }
+		default:
+			// malformed, there's nothing to do except it
+			// error later.
+		}
+		reformCommands(ctx, cmds[idx].Subcommands)
+	}
 }
 
 // AppOptions provides the structure for construction a cli.App from a
@@ -230,16 +295,6 @@ type AppOptions struct {
 // the top-level root commands.
 func (c *Commander) SetAppOptions(opts AppOptions) *Commander { c.opts.Set(opts); return c }
 
-// SetContext attaches a context to the commander. This is only needed
-// if you are NOT using the commander with the Run() or Main()
-// methods.
-func (c *Commander) SetContext(ctx context.Context) *Commander {
-	c.ctx.Set(makeContextProducer(ctx))
-	return c
-}
-
-func (c *Commander) getContext() context.Context { return c.ctx.Get()() }
-
 // App resolves a command object from the commander and the provided
 // options. You must set the context on the Commander using the
 // SetContext before calling this command directly.
@@ -253,8 +308,8 @@ func (c *Commander) App() *cli.App {
 	cmd := c.Command()
 	app := cli.NewApp()
 
-	app.Name = setWhenNotZero(a.Name, cmd.Name)
-	app.Usage = setWhenNotZero(a.Usage, cmd.Usage)
+	app.Name = secondValueWhenFirstIsZero(a.Name, cmd.Name)
+	app.Usage = secondValueWhenFirstIsZero(a.Usage, cmd.Usage)
 	app.Version = a.Version
 
 	app.Commands = cmd.Subcommands
