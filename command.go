@@ -44,6 +44,7 @@ type Commander struct {
 	cmd        cli.Command
 	ctx        adt.Atomic[contextProducer]
 	name       adt.Atomic[string]
+	usage      adt.Atomic[string]
 	action     adt.Atomic[Action]
 	opts       adt.Atomic[AppOptions]
 	once       sync.Once
@@ -132,7 +133,8 @@ func MakeCommander() *Commander {
 	return c
 }
 
-func (c *Commander) SetName(n string) *Commander { c.name.Set(n); return c }
+func (c *Commander) SetName(n string) *Commander  { c.name.Set(n); return c }
+func (c *Commander) SetUsage(u string) *Commander { c.usage.Set(u); return c }
 
 // Commander adds a subcommander, returning the original parent
 // commander object.
@@ -197,6 +199,7 @@ func (c *Commander) Command() cli.Command {
 		fun.Invariant(ctx != nil, "context must be set when calling command")
 
 		c.cmd.Name = c.name.Get()
+		c.cmd.Usage = c.usage.Get()
 
 		c.flags.With(func(in *seq.List[Flag]) {
 			fun.InvariantMust(fun.Observe(ctx, seq.ListValues(in.Iterator()), func(v Flag) {

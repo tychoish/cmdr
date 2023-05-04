@@ -282,7 +282,8 @@ func TestCommander(t *testing.T) {
 						},
 					})).
 					SetContext(ctx).
-					SetName("sub")
+					SetName("sub").
+					SetUsage("usage")
 
 				ncmd := MakeCommander().AddUrfaveCommand(cmd.Command()).SetName(t.Name())
 
