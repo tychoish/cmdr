@@ -26,14 +26,38 @@ type OperationSpec[T any] struct {
 	// Middlware is optional and makes it possible to attach T to
 	// a context for later use. Middlewares
 	Middleware func(context.Context, T) context.Context
-	// Operations provide a sequence of type-specialized hooks
-	// that you can use to post-process the constructed object,
-	// particularly if T is mutable. These run after the
-	// constructor during the "hook"
-	Operations []Operation[T]
+	// Hooks are a sequence of type-specialized hooks that you can
+	// use to post-process the constructed object, particularly if
+	// T is mutable. These run after the constructor during the
+	// "hook"
+	Hooks []Operation[T]
 	// Action may be (optionally) specified here as an Operation
 	// or directly on the command.
 	Action Operation[T]
+}
+
+// NewSpecBuilder provides an alternate (chainable) method for
+// building a spec, that is consistent with the Commander interface,
+// and that the compiler can correctly infer the correct type for T.
+//
+// This builder is not safe for concurrent use.
+func NewSpecBuilder[T any](constr Hook[T]) *OperationSpec[T] {
+	return &OperationSpec[T]{Constructor: constr}
+}
+
+func (spec *OperationSpec[T]) SetMiddleware(mw func(context.Context, T) context.Context) *OperationSpec[T] {
+	spec.Middleware = mw
+	return spec
+}
+
+func (spec *OperationSpec[T]) SetAction(op Operation[T]) *OperationSpec[T] {
+	spec.Action = op
+	return spec
+}
+
+func (spec *OperationSpec[T]) AddHooks(hook ...Operation[T]) *OperationSpec[T] {
+	spec.Hooks = append(spec.Hooks, hook...)
+	return spec
 }
 
 // AddOperationSpec adds an operation to a Commander (and returns the
@@ -47,7 +71,7 @@ type OperationSpec[T any] struct {
 // AddOperationSpec more than once on a single command. However, there
 // is only ever one action on a commander, so the last non-nil Action
 // specified will be used.
-func AddOperationSpec[T any](c *Commander, spec OperationSpec[T]) *Commander {
+func AddOperationSpec[T any](c *Commander, spec *OperationSpec[T]) *Commander {
 	var out T
 	c.AddHook(func(ctx context.Context, cc *cli.Context) (err error) {
 		out, err = spec.Constructor(ctx, cc)
@@ -55,8 +79,8 @@ func AddOperationSpec[T any](c *Commander, spec OperationSpec[T]) *Commander {
 			return err
 		}
 
-		for idx := range spec.Operations {
-			if err := spec.Operations[idx](ctx, out); err != nil {
+		for idx := range spec.Hooks {
+			if err := spec.Hooks[idx](ctx, out); err != nil {
 				return err
 			}
 		}
@@ -112,7 +136,7 @@ func CompositeHook[T any](constr Hook[T], ops ...Operation[T]) Hook[T] {
 // test.
 func AddOperation[T any](c *Commander, hook Hook[T], op Operation[T], flags ...Flag) *Commander {
 	c.AddFlags(flags...)
-	return AddOperationSpec(c, OperationSpec[T]{
+	return AddOperationSpec(c, &OperationSpec[T]{
 		Constructor: hook,
 		Action:      op,
 	})

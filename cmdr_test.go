@@ -139,9 +139,9 @@ func TestCommander(t *testing.T) {
 			t.Run("Basic", func(t *testing.T) {
 				count := 0
 				cmd := MakeCommander()
-				AddOperationSpec(cmd, OperationSpec[string]{
+				AddOperationSpec(cmd, &OperationSpec[string]{
 					Constructor: func(ctx context.Context, cc *cli.Context) (string, error) { count++; return "hi", nil },
-					Operations: []Operation[string]{
+					Hooks: []Operation[string]{
 						func(ctx context.Context, in string) error {
 							count++
 							check.Equal(t, in, "hi")
@@ -161,12 +161,42 @@ func TestCommander(t *testing.T) {
 				assert.NotError(t, Run(ctx, cmd, []string{"comp"}))
 				assert.Equal(t, count, 4)
 			})
+			t.Run("Builder", func(t *testing.T) {
+				count := 0
+				cmd := MakeCommander()
+				AddOperationSpec(cmd,
+					NewSpecBuilder(func(ctx context.Context, cc *cli.Context) (string, error) {
+						count++
+						return "hi", nil
+					}).AddHooks(func(ctx context.Context, in string) error {
+						count++
+						check.Equal(t, in, "hi")
+						return nil
+					}).SetMiddleware(func(ctx context.Context, in string) context.Context {
+						count++
+						check.Equal(t, in, "hi")
+						return ctx
+					}).SetAction(func(ctx context.Context, in string) error {
+						count++
+						check.Equal(t, in, "hi")
+						return nil
+					}),
+				)
+
+				assert.Equal(t, cmd.numHooks(), 1)
+				assert.Equal(t, cmd.numMiddleware(), 1)
+				assert.True(t, cmd.action.Get() != nil)
+				assert.NotError(t, Run(ctx, cmd, []string{"comp"}))
+				assert.Equal(t, count, 4)
+
+			})
+
 			t.Run("HookErrorAborts", func(t *testing.T) {
 				count := 0
 				cmd := MakeCommander()
-				AddOperationSpec(cmd, OperationSpec[string]{
+				AddOperationSpec(cmd, &OperationSpec[string]{
 					Constructor: func(ctx context.Context, cc *cli.Context) (string, error) { count++; return "hi", nil },
-					Operations: []Operation[string]{func(ctx context.Context, in string) error {
+					Hooks: []Operation[string]{func(ctx context.Context, in string) error {
 						count++
 						check.Equal(t, in, "hi")
 						return errors.New("abort")
