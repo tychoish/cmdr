@@ -56,6 +56,7 @@ type Commander struct {
 	once       sync.Once
 	cmd        cli.Command
 	hidden     atomic.Bool
+	blocking   atomic.Bool
 	ctx        adt.Atomic[contextProducer]
 	opts       adt.Atomic[AppOptions]
 	name       adt.Atomic[string]
@@ -81,14 +82,16 @@ func MakeRootCommander() *Commander {
 	c.middleware.With(func(in *seq.List[Middleware]) {
 		in.PushBack(srv.SetBaseContext)
 		in.PushBack(srv.SetShutdownSignal)
-		in.PushBack(srv.WithOrchestrator)
+		in.PushBack(srv.WithOrchestrator) // this starts the orchestrator
 		in.PushBack(srv.WithCleanup)
 	})
 
 	c.cmd.After = func(_ *cli.Context) error {
-		// cancel the parent context
 		ctx := c.getContext()
-		srv.GetShutdownSignal(ctx)()
+		if !c.blocking.Load() {
+			// cancel the parent context
+			srv.GetShutdownSignal(ctx)()
+		}
 		return srv.GetOrchestrator(ctx).Wait()
 	}
 
@@ -160,6 +163,18 @@ func MakeCommander() *Commander {
 func (c *Commander) SetAction(in Action) *Commander { c.action.Set(in); return c }
 func (c *Commander) SetName(n string) *Commander    { c.name.Set(n); return c }
 func (c *Commander) SetUsage(u string) *Commander   { c.usage.Set(u); return c }
+
+// SetBlocking configures the blocking semantics of the command. This
+// setting is only used by root Commander objects. It defaults to
+// false, which means that the action function returns the context
+// passed to services will be canceled.
+//
+// When true, commanders do not cancel the context after the Action
+// function returns, including for relevant sub commands; instead
+// waiting for any services, managed by the Commanders' orchestrator
+// to return, for the services to signal shutdown, or the context
+// passed to the cmdr.Run or cmdr.Main functions to expire.
+func (c *Commander) SetBlocking(b bool) *Commander { c.blocking.Store(b); return c }
 
 // SetContext attaches a context to the commander. This is only needed
 // if you are NOT using the commander with the Run() or Main()

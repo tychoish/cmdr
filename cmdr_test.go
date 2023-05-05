@@ -88,7 +88,12 @@ func TestCommander(t *testing.T) {
 						check.Equal(t, in, "kip")
 						return nil
 					},
-				}))
+				})).SetBlocking(true)
+			assert.True(t, cmd.blocking.Load())
+
+			cmd.SetBlocking(false)
+
+			assert.True(t, !cmd.blocking.Load())
 
 			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", "kip"}))
 			assert.Equal(t, count, 2)
