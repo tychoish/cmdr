@@ -22,9 +22,9 @@ jobs:
         with:
           PATTERNS: |
             **/**.go
-            "!test/"
             go.mod
             go.sum
+            .github/workflows/test.yaml
       - name: Run Go Tests
         if: env.GIT_DIFF
         run: |
