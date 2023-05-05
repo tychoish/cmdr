@@ -6,13 +6,16 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
+
+	"github.com/urfave/cli"
 
 	"github.com/tychoish/fun"
 	"github.com/tychoish/fun/adt"
 	"github.com/tychoish/fun/erc"
+	"github.com/tychoish/fun/itertool"
 	"github.com/tychoish/fun/seq"
 	"github.com/tychoish/fun/srv"
-	"github.com/urfave/cli"
 )
 
 // Action defines the core functionality for a command line entry
@@ -50,14 +53,16 @@ type Middleware func(ctx context.Context) context.Context
 // github.com/tychoish/fun/srv package's srv.AddCleanupHook() and
 // srv.AddCleanupError().
 type Commander struct {
+	once       sync.Once
 	cmd        cli.Command
+	hidden     atomic.Bool
 	ctx        adt.Atomic[contextProducer]
+	opts       adt.Atomic[AppOptions]
 	name       adt.Atomic[string]
 	usage      adt.Atomic[string]
 	action     adt.Atomic[Action]
-	opts       adt.Atomic[AppOptions]
-	once       sync.Once
 	flags      adt.Synchronized[*seq.List[Flag]]
+	aliases    adt.Synchronized[*seq.List[string]]
 	hook       adt.Synchronized[*seq.List[Action]]
 	middleware adt.Synchronized[*seq.List[Middleware]]
 	subcmds    adt.Synchronized[*seq.List[*Commander]]
@@ -98,6 +103,7 @@ func MakeCommander() *Commander {
 	c.hook.Set(&seq.List[Action]{})
 	c.subcmds.Set(&seq.List[*Commander]{})
 	c.middleware.Set(&seq.List[Middleware]{})
+	c.aliases.Set(&seq.List[string]{})
 
 	c.cmd.Before = func(cc *cli.Context) error {
 		ec := &erc.Collector{}
@@ -133,10 +139,18 @@ func MakeCommander() *Commander {
 		if op != nil {
 			return op(c.getContext(), cc)
 		}
+
+		// no commands defined, no action defined,
 		if c.subcmds.Get().Len() == 0 {
 			return fmt.Errorf("action: %w", ErrNotDefined)
 		}
-		return nil
+
+		args := cc.Args()
+		if len(args) == 0 {
+			return erc.Merge(cli.ShowAppHelp(cc), fmt.Errorf("no operation for %q: %w", c.cmd.Name, ErrNotSpecified))
+		}
+
+		return erc.Merge(cli.ShowCommandHelp(cc, c.cmd.Name), fmt.Errorf("command %v: %w", args, ErrNotDefined))
 	}
 
 	return c
@@ -144,28 +158,23 @@ func MakeCommander() *Commander {
 
 // SetAction defines the core operation for the commander.
 func (c *Commander) SetAction(in Action) *Commander { c.action.Set(in); return c }
-
-func (c *Commander) SetName(n string) *Commander  { c.name.Set(n); return c }
-func (c *Commander) SetUsage(u string) *Commander { c.usage.Set(u); return c }
+func (c *Commander) SetName(n string) *Commander    { c.name.Set(n); return c }
+func (c *Commander) SetUsage(u string) *Commander   { c.usage.Set(u); return c }
 
 // SetContext attaches a context to the commander. This is only needed
 // if you are NOT using the commander with the Run() or Main()
 // methods.
-func (c *Commander) SetContext(ctx context.Context) *Commander {
-	c.ctx.Set(makeContextProducer(ctx))
-	return c
-}
+func (c *Commander) SetContext(ctx context.Context) *Commander { c.ctx.Set(ctxMaker(ctx)); return c }
+func (c *Commander) getContext() context.Context               { return c.ctx.Get()() }
 
-func (c *Commander) getContext() context.Context { return c.ctx.Get()() }
-
-// AddSubcommand adds a subcommander, returning the original parent
+// Subcommanders adds a subcommander, returning the original parent
 // commander object.
-func (c *Commander) AddSubcommand(sub *Commander) *Commander {
-	c.subcmds.With(func(in *seq.List[*Commander]) { in.PushBack(sub) })
+func (c *Commander) Subcommanders(subs ...*Commander) *Commander {
+	appendTo(&c.subcmds, subs...)
 	return c
 }
 
-// AddUrfaveCommand directly adds a urfae/cli.Command as a subcommand
+// UrfaveCommands directly adds a urfae/cli.Command as a subcommand
 // to the Commander.
 //
 // Commanders do not modify the raw subcommands added in this way,
@@ -185,43 +194,30 @@ func (c *Commander) AddSubcommand(sub *Commander) *Commander {
 // The commander processes the sub commands recursively. All wrapping
 // happens when building the cli.App/cli.Command for the converter,
 // and has limited overhead.
-func (c *Commander) AddUrfaveCommand(cc cli.Command) *Commander {
-	sub := MakeCommander()
-	sub.cmd = cc
-	return c.AddSubcommand(sub)
-}
-
-// AddFlag adds a command-line flag in the specified command.
-func (c *Commander) AddFlag(flag Flag) *Commander {
-	c.flags.With(func(in *seq.List[Flag]) { in.PushBack(flag) })
-	return c
-}
-
-// AddFlags adds one or more flags to the commander.
-func (c *Commander) AddFlags(flags ...Flag) *Commander { return c.AppendFlags(flags) }
-
-// AppendFlags adds a slice of flags to the commander.
-func (c *Commander) AppendFlags(flags []Flag) *Commander {
-	c.flags.With(func(in *seq.List[Flag]) {
-		for idx := range flags {
-			in.PushBack(flags[idx])
+func (c *Commander) UrfaveCommands(cc ...cli.Command) *Commander {
+	c.subcmds.With(func(in *seq.List[*Commander]) {
+		for idx := range cc {
+			sub := MakeCommander()
+			sub.cmd = cc[idx]
+			in.PushBack(sub)
 		}
 	})
+
 	return c
 }
 
-// AddHook adds a new hook to the commander. Hooks are all executed
+func (c *Commander) Flags(flags ...Flag) *Commander { appendTo(&c.flags, flags...); return c }
+func (c *Commander) Aliases(a ...string) *Commander { appendTo(&c.aliases, a...); return c }
+
+// Hooks adds a new hook to the commander. Hooks are all executed
 // before the command runs. While all hooks run and errors are
 // collected, if any hook errors the action will not execute.
-func (c *Commander) AddHook(op Action) *Commander {
-	c.hook.With(func(in *seq.List[Action]) { in.PushBack(op) })
-	return c
-}
+func (c *Commander) Hooks(op ...Action) *Commander { appendTo(&c.hook, op...); return c }
 
 // SetMiddlware allows users to modify the context passed to the hooks
 // and actions of a command.
-func (c *Commander) AddMiddleware(mw Middleware) *Commander {
-	c.middleware.With(func(in *seq.List[Middleware]) { in.PushBack(mw) })
+func (c *Commander) Middleware(mws ...Middleware) *Commander {
+	appendTo(&c.middleware, mws...)
 	return c
 }
 
@@ -241,6 +237,15 @@ func (c *Commander) Command() cli.Command {
 
 		c.cmd.Name = secondValueWhenFirstIsZero(c.cmd.Name, c.name.Get())
 		c.cmd.Usage = secondValueWhenFirstIsZero(c.cmd.Usage, c.usage.Get())
+		c.cmd.Hidden = c.hidden.Load()
+
+		if len(c.cmd.Aliases) == 0 {
+			var aliases []string
+			c.aliases.With(func(in *seq.List[string]) {
+				aliases = fun.Must(itertool.CollectSlice(ctx, seq.ListValues(in.Iterator())))
+			})
+			c.cmd.Aliases = aliases
+		}
 
 		c.flags.With(func(in *seq.List[Flag]) {
 			fun.InvariantMust(fun.Observe(ctx, seq.ListValues(in.Iterator()), func(v Flag) {

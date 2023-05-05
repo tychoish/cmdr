@@ -1,12 +1,24 @@
 package cmdr
 
 import (
-	"github.com/tychoish/fun"
+	"strings"
+	"time"
+
 	"github.com/urfave/cli"
+
+	"github.com/tychoish/fun"
 )
 
-// FlagOptions provide a generic way to generate a flag object.
-type FlagOptions[T any] struct {
+// FlagTypes defines the limited set of types which are supported by
+// the flag parsing system.
+type FlagTypes interface {
+	string | int | int64 | float64 | bool | []string | []int | []int64 | time.Duration
+}
+
+// FlagOptions provide a generic way to generate a flag
+// object. Methods on FlagOptions are provided for consistency and
+// ergonomics: they are not safe for concurrent use.
+type FlagOptions[T FlagTypes] struct {
 	Name      string
 	Usage     string
 	EnvVar    string
@@ -25,6 +37,31 @@ type FlagOptions[T any] struct {
 	// not support this.
 	Destination *T
 }
+
+// FlagBuilder provides a constructor that you can use to build a
+// FlagOptions. Provide the constructor with the default value, which
+// you can override later, if needed. Slice values *must* be the empty
+// list.
+func FlagBuilder[T FlagTypes](defaultVal T) *FlagOptions[T] {
+	return &FlagOptions[T]{Default: defaultVal}
+}
+
+func (fo *FlagOptions[T]) SetName(s ...string) *FlagOptions[T] {
+	fo.Name = strings.Join(s, ", ")
+	return fo
+}
+
+func (fo *FlagOptions[T]) SetUsage(s string) *FlagOptions[T]           { fo.Usage = s; return fo }
+func (fo *FlagOptions[T]) SetEnvVar(s string) *FlagOptions[T]          { fo.EnvVar = s; return fo }
+func (fo *FlagOptions[T]) SetFilePath(s string) *FlagOptions[T]        { fo.FilePath = s; return fo }
+func (fo *FlagOptions[T]) SetRequired(b bool) *FlagOptions[T]          { fo.Required = b; return fo }
+func (fo *FlagOptions[T]) SetHidden(b bool) *FlagOptions[T]            { fo.Hidden = b; return fo }
+func (fo *FlagOptions[T]) SetTakesFile(b bool) *FlagOptions[T]         { fo.TakesFile = b; return fo }
+func (fo *FlagOptions[T]) SetValidate(v func(T) error) *FlagOptions[T] { fo.Validate = v; return fo }
+func (fo *FlagOptions[T]) SetDefault(d T) *FlagOptions[T]              { fo.Default = d; return fo }
+func (fo *FlagOptions[T]) SetDestination(p *T) *FlagOptions[T]         { fo.Destination = p; return fo }
+func (fo *FlagOptions[T]) Flag() Flag                                  { return MakeFlag(fo) }
+func (fo *FlagOptions[T]) Add(c *Commander)                            { c.Flags(fo.Flag()) }
 
 // Flag defines a command line flag, and is produced using the
 // FlagOptions struct by the MakeFlag function.
@@ -49,16 +86,10 @@ func getValidateFunction[T any](
 	}
 }
 
-// FlagTypes defines the limited set of types which are supported by
-// the flag parsing system.
-type FlagTypes interface {
-	string | int | int64 | float64 | bool | []string | []int | []int64
-}
-
 // MakeFlag builds a commandline flag instance and validation from a
 // typed flag to options to a flag object for the command
 // line.
-func MakeFlag[T FlagTypes](opts FlagOptions[T]) Flag {
+func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 	var out Flag
 
 	switch dval := any(opts.Default).(type) {
@@ -92,6 +123,22 @@ func MakeFlag[T FlagTypes](opts FlagOptions[T]) Flag {
 		out.validate = getValidateFunction(
 			opts.Name,
 			func(in string, c *cli.Context) T { return any(c.Int(in)).(T) },
+			opts.Validate,
+		)
+	case time.Duration:
+		out.value = cli.DurationFlag{
+			Name:     opts.Name,
+			Usage:    opts.Usage,
+			EnvVar:   opts.EnvVar,
+			FilePath: opts.FilePath,
+			Required: opts.Required,
+			Hidden:   opts.Hidden,
+			Value:    dval,
+		}
+
+		out.validate = getValidateFunction(
+			opts.Name,
+			func(in string, c *cli.Context) T { return any(c.Duration(in)).(T) },
 			opts.Validate,
 		)
 	case int64:
@@ -157,7 +204,7 @@ func MakeFlag[T FlagTypes](opts FlagOptions[T]) Flag {
 			Required: opts.Required,
 			Hidden:   opts.Hidden,
 		}
-		fun.Invariant(dval == nil, "slice flags should not have default values")
+		fun.Invariant(len(dval) == 0, "slice flags should not have default values")
 		fun.Invariant(opts.Destination == nil, "cannot specify destination for slice values")
 
 		out.value = o
@@ -175,7 +222,7 @@ func MakeFlag[T FlagTypes](opts FlagOptions[T]) Flag {
 			Required: opts.Required,
 			Hidden:   opts.Hidden,
 		}
-		fun.Invariant(dval == nil, "slice flags should not have default values")
+		fun.Invariant(len(dval) == 0, "slice flags should not have default values")
 		fun.Invariant(opts.Destination == nil, "cannot specify destination for slice values")
 
 		out.value = o
@@ -194,7 +241,7 @@ func MakeFlag[T FlagTypes](opts FlagOptions[T]) Flag {
 			Hidden:   opts.Hidden,
 		}
 
-		fun.Invariant(dval == nil, "slice flags should not have default values")
+		fun.Invariant(len(dval) == 0, "slice flags should not have default values")
 		fun.Invariant(opts.Destination == nil, "cannot specify destination for slice values")
 
 		out.value = o
