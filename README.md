@@ -34,7 +34,7 @@ import (
 	"github.com/tychoish/cmdr"
 	"github.com/tychoish/fun/srv"
 	"github.com/tychoish/grip"
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v2"
 )
 
 type ServiceConfig struct {

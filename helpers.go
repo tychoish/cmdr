@@ -3,7 +3,7 @@ package cmdr
 import (
 	"context"
 
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v2"
 
 	"github.com/tychoish/fun"
 )

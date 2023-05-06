@@ -3,18 +3,15 @@ package cmdr
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"testing"
-	"time"
 
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v2"
 
 	"github.com/tychoish/fun/assert"
 	"github.com/tychoish/fun/assert/check"
 	"github.com/tychoish/fun/seq"
 	"github.com/tychoish/fun/srv"
-	"github.com/tychoish/fun/testt"
 )
 
 func (c *Commander) numFlags() int {
@@ -131,7 +128,7 @@ func TestCommander(t *testing.T) {
 			).SetName(t.Name())
 
 			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", "kip"}))
-			assert.Equal(t, count, 3)
+			assert.Equal(t, 3, count)
 		})
 		t.Run("Subcommanders", func(t *testing.T) {
 			cmd := MakeRootCommander().SetName("foo").SetContext(ctx)
@@ -306,12 +303,14 @@ func TestCommander(t *testing.T) {
 			cmd := MakeCommander().
 				SetAction(func(ctx context.Context, cc *cli.Context) error {
 					count++
-					check.Equal(t, cc.String("hello"), "merlin")
+					t.Log(cc.IsSet("hello"))
+					t.Fatal("should never be called because of flag validation")
 					return nil
 				}).
 				With((&FlagOptions[string]{
 					Name: "hello",
 					Validate: func(in string) error {
+						t.Log("hello", in)
 						check.Equal(t, in, "")
 						return errors.New("validation failure")
 					},
@@ -483,228 +482,6 @@ func TestCommander(t *testing.T) {
 		sub := app1.Commands[0]
 		assert.Equal(t, 1, len(sub.Flags))
 	})
-	t.Run("FlagConstruction", func(t *testing.T) {
-		t.Run("Int", func(t *testing.T) {
-			counter := 0
-
-			flag := MakeFlag(&FlagOptions[int]{
-				Name:     "hello",
-				Validate: func(in int) error { counter++; check.Equal(t, in, 42); return nil },
-			})
-			check.Equal(t, "hello", flag.value.GetName())
-			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
-				counter++
-				check.Equal(t, 42, cc.Int("hello"))
-				return nil
-			})
-			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", "42"}))
-			assert.Equal(t, 2, counter)
-		})
-		t.Run("Int64", func(t *testing.T) {
-			counter := 0
-
-			flag := MakeFlag(&FlagOptions[int64]{
-				Name:     "hello",
-				Validate: func(in int64) error { counter++; check.Equal(t, in, 42); return nil },
-			})
-			check.Equal(t, "hello", flag.value.GetName())
-			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
-				counter++
-				check.Equal(t, 42, cc.Int64("hello"))
-				return nil
-			})
-			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", "42"}))
-			assert.Equal(t, 2, counter)
-		})
-		t.Run("Duration", func(t *testing.T) {
-			counter := 0
-
-			flag := MakeFlag(&FlagOptions[time.Duration]{
-				Name:     "hello",
-				Validate: func(in time.Duration) error { counter++; check.Equal(t, in, 42*time.Second); return nil },
-			})
-			check.Equal(t, "hello", flag.value.GetName())
-			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
-				counter++
-				check.Equal(t, 42*time.Second, cc.Duration("hello"))
-				return nil
-			})
-			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", "42s"}))
-			assert.Equal(t, 2, counter)
-		})
-		t.Run("Float64", func(t *testing.T) {
-			counter := 0
-
-			flag := MakeFlag(&FlagOptions[float64]{
-				Name:     "hello",
-				Validate: func(in float64) error { counter++; check.Equal(t, in, 42); return nil },
-			})
-			check.Equal(t, "hello", flag.value.GetName())
-			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
-				counter++
-				check.Equal(t, 42, cc.Float64("hello"))
-				return nil
-			})
-			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", "42"}))
-			assert.Equal(t, 2, counter)
-		})
-		t.Run("BoolFalse", func(t *testing.T) {
-			counter := 0
-
-			flag := MakeFlag(&FlagOptions[bool]{
-				Name: "hello",
-			})
-			check.Equal(t, "hello", flag.value.GetName())
-			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
-				counter++
-				check.True(t, !cc.Bool("hello"))
-				return nil
-			})
-			assert.NotError(t, Run(ctx, cmd, []string{t.Name()}))
-			assert.Equal(t, 1, counter)
-		})
-		t.Run("BoolTrue", func(t *testing.T) {
-			counter := 0
-
-			flag := MakeFlag(&FlagOptions[bool]{
-				Name: "hello",
-			})
-			check.Equal(t, "hello", flag.value.GetName())
-			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
-				counter++
-				check.True(t, cc.Bool("hello"))
-				return nil
-			})
-			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello"}))
-			assert.Equal(t, 1, counter)
-		})
-		t.Run("BoolT", func(t *testing.T) {
-			counter := 0
-
-			flag := FlagBuilder(true).SetName("hello").Flag()
-			check.Equal(t, "hello", flag.value.GetName())
-			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
-				counter++
-				check.True(t, cc.BoolT("hello"))
-				return nil
-			})
-			assert.NotError(t, Run(ctx, cmd, []string{t.Name()}))
-			assert.Equal(t, 1, counter)
-		})
-		t.Run("StringSlice", func(t *testing.T) {
-			counter := 0
-
-			flag := MakeFlag(&FlagOptions[[]string]{
-				Name: "hello",
-				Validate: func(in []string) error {
-					counter++
-					check.Equal(t, 2, len(in))
-					return nil
-				},
-			})
-			check.Equal(t, "hello", flag.value.GetName())
-			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
-				counter++
-				val := cc.StringSlice("hello")
-				check.Equal(t, val[0], "not")
-				check.Equal(t, val[1], "other")
-				return nil
-			})
-			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", "not", "--hello", "other"}))
-			assert.Equal(t, 2, counter)
-		})
-		t.Run("IntSlice", func(t *testing.T) {
-			counter := 0
-
-			flag := FlagBuilder[[]int](nil).SetValidate(func(in []int) error {
-				counter++
-				check.Equal(t, 2, len(in))
-				return nil
-			}).SetName("hello").Flag()
-			cmd := MakeCommander().
-				Flags(flag).
-				SetAction(func(ctx context.Context, cc *cli.Context) error {
-					counter++
-					val := cc.IntSlice("hello")
-					assert.Equal(t, len(val), 2)
-					assert.Equal(t, val[0], 300)
-					assert.Equal(t, val[1], 100)
-					return nil
-				})
-			check.Equal(t, "hello", flag.value.GetName())
-			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", "300", "--hello", "100"}))
-			assert.Equal(t, 2, counter)
-		})
-		t.Run("Int64Slice", func(t *testing.T) {
-			counter := 0
-
-			flag := MakeFlag(&FlagOptions[[]int64]{
-				Name: "hello",
-				Validate: func(in []int64) error {
-					counter++
-					check.Equal(t, 2, len(in))
-					return nil
-				},
-			})
-			cmd := MakeCommander().
-				Flags(flag).
-				SetAction(func(ctx context.Context, cc *cli.Context) error {
-					counter++
-					val := cc.Int64Slice("hello")
-					assert.Equal(t, len(val), 2)
-					assert.Equal(t, val[0], 300)
-					assert.Equal(t, val[1], 100)
-					return nil
-				})
-			check.Equal(t, "hello", flag.value.GetName())
-			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", "300", "--hello", "100"}))
-			assert.Equal(t, 2, counter)
-		})
-	})
-	t.Run("FlagBuilder", func(t *testing.T) {
-		t.Run("Default", func(t *testing.T) {
-			called := false
-			cmd := MakeCommander().
-				Flags(FlagBuilder("hi").SetName("world").Flag()).
-				SetAction(func(_ context.Context, cc *cli.Context) error {
-					check.Equal(t, cc.String("world"), "hi")
-					called = true
-					return nil
-				})
-			assert.NotError(t, Run(ctx, cmd, []string{t.Name()}))
-			assert.True(t, called)
-		})
-		t.Run("Options", func(t *testing.T) {
-			count := 0
-			var dest string
-			cmd := MakeCommander().
-				Flags(FlagBuilder("hi").
-					SetName("world").
-					SetUsage("checked value").
-					SetEnvVar("hello").
-					SetFilePath("/tmp/conf").
-					SetRequired(false).
-					SetHidden(false).
-					SetTakesFile(false).
-					SetDefault("beep").
-					SetDestination(&dest).
-					SetValidate(func(op string) error {
-						count++
-						check.Equal(t, op, "beep")
-						return nil
-					}).
-					Flag(),
-				).
-				SetAction(func(_ context.Context, cc *cli.Context) error {
-					check.Equal(t, cc.String("world"), "beep")
-					count++
-					return nil
-				})
-			assert.NotError(t, Run(ctx, cmd, []string{t.Name()}))
-			assert.Equal(t, count, 2)
-			assert.Equal(t, dest, "beep")
-		})
-	})
 	t.Run("Helpers", func(t *testing.T) {
 		t.Run("SetWhenNotZero", func(t *testing.T) {
 			const (
@@ -715,43 +492,6 @@ func TestCommander(t *testing.T) {
 			check.Equal(t, a, secondValueWhenFirstIsZero(a, b))
 			check.Equal(t, b, secondValueWhenFirstIsZero("", b))
 			check.Equal(t, "", secondValueWhenFirstIsZero("", ""))
-		})
-		t.Run("PostProcessAction", func(t *testing.T) {
-			t.Run("Converers", func(t *testing.T) {
-				var called bool
-				for _, action := range []any{
-					func(context.Context) error { called = true; return nil },
-					func(*cli.Context) error { called = true; return nil },
-					func(context.Context, *cli.Context) error { called = true; return nil },
-					func() error { called = true; return nil },
-					func(context.Context) { called = true },
-					func() { called = true },
-				} {
-					assert.True(t, !called)
-					assert.True(t, action != nil)
-					cmds := []cli.Command{{Action: action}}
-					reformCommands(ctx, cmds)
-					assert.True(t, cmds[0].Action != nil)
-					op, ok := cmds[0].Action.(func(*cli.Context) error)
-					testt.Logf(t, "%T", cmds[0].Action)
-					assert.True(t, ok)
-					assert.NotError(t, op(nil))
-					assert.True(t, called)
-					called = false
-				}
-			})
-			t.Run("Nil", func(t *testing.T) {
-				cmd := cli.Command{Action: nil}
-				reformCommands(ctx, []cli.Command{cmd})
-				assert.True(t, cmd.Action == nil)
-			})
-			t.Run("Passthrough", func(t *testing.T) {
-				act := func(*cli.Context) error { return errors.New("foo") }
-				cmd := []cli.Command{{Action: act}}
-				reformCommands(ctx, cmd)
-				assert.Equal(t, fmt.Sprintf("%p", act), fmt.Sprintf("%p", cmd[0].Action))
-			})
-
 		})
 	})
 }

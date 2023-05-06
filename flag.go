@@ -1,18 +1,18 @@
 package cmdr
 
 import (
-	"strings"
 	"time"
 
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v2"
 
 	"github.com/tychoish/fun"
+	"github.com/tychoish/fun/adt"
 )
 
 // FlagTypes defines the limited set of types which are supported by
 // the flag parsing system.
 type FlagTypes interface {
-	string | int | int64 | float64 | bool | []string | []int | []int64 | time.Duration
+	string | int | uint | int64 | uint64 | float64 | bool | time.Time | time.Duration | []string | []int | []int64
 }
 
 // FlagOptions provide a generic way to generate a flag
@@ -20,13 +20,15 @@ type FlagTypes interface {
 // ergonomics: they are not safe for concurrent use.
 type FlagOptions[T FlagTypes] struct {
 	Name      string
+	Aliases   []string
 	Usage     string
-	EnvVar    string
 	FilePath  string
 	Required  bool
 	Hidden    bool
 	TakesFile bool
 	Validate  func(T) error
+
+	TimestampLayout string
 
 	// Default values are provided to the parser for many
 	// types. However, slice-types do not support default values.
@@ -47,12 +49,31 @@ func FlagBuilder[T FlagTypes](defaultVal T) *FlagOptions[T] {
 }
 
 func (fo *FlagOptions[T]) SetName(s ...string) *FlagOptions[T] {
-	fo.Name = strings.Join(s, ", ")
+	switch len(s) {
+	case 0:
+	case 1:
+		fo.Name = s[0]
+	default:
+		fo.Name = s[0]
+		fo.AddAliases(s[1:]...)
+	}
+
 	return fo
 }
 
+func (fo *FlagOptions[T]) AddAliases(a ...string) *FlagOptions[T] {
+	return fo.SetAliases(append(fo.Aliases, a...))
+}
+
+func (fo *FlagOptions[T]) SetTimestmapLayout(l string) *FlagOptions[T] {
+	_, ok := any(fo.Default).(time.Time)
+	fun.Invariant(ok, "cannot set timestamp layout for non-timestamp flags")
+	fo.TimestampLayout = l
+	return fo
+}
+
+func (fo *FlagOptions[T]) SetAliases(a []string) *FlagOptions[T]       { fo.Aliases = a; return fo }
 func (fo *FlagOptions[T]) SetUsage(s string) *FlagOptions[T]           { fo.Usage = s; return fo }
-func (fo *FlagOptions[T]) SetEnvVar(s string) *FlagOptions[T]          { fo.EnvVar = s; return fo }
 func (fo *FlagOptions[T]) SetFilePath(s string) *FlagOptions[T]        { fo.FilePath = s; return fo }
 func (fo *FlagOptions[T]) SetRequired(b bool) *FlagOptions[T]          { fo.Required = b; return fo }
 func (fo *FlagOptions[T]) SetHidden(b bool) *FlagOptions[T]            { fo.Hidden = b; return fo }
@@ -63,193 +84,226 @@ func (fo *FlagOptions[T]) SetDestination(p *T) *FlagOptions[T]         { fo.Dest
 func (fo *FlagOptions[T]) Flag() Flag                                  { return MakeFlag(fo) }
 func (fo *FlagOptions[T]) Add(c *Commander)                            { c.Flags(fo.Flag()) }
 
+func (fo *FlagOptions[T]) doValidate(in T) error {
+	if fo.Validate == nil {
+		return nil
+	}
+	return fo.Validate(in)
+}
+
 // Flag defines a command line flag, and is produced using the
 // FlagOptions struct by the MakeFlag function.
 type Flag struct {
-	value    cli.Flag
-	validate func(c *cli.Context) error
-}
-
-func getValidateFunction[T any](
-	name string,
-	in func(string, *cli.Context) T,
-	validate func(T) error,
-) func(*cli.Context) error {
-	return func(c *cli.Context) error {
-		if validate != nil {
-			if err := validate(in(name, c)); err != nil {
-				return err
-			}
-		}
-
-		return nil
-	}
+	value        cli.Flag
+	validateOnce *adt.Once[error]
 }
 
 // MakeFlag builds a commandline flag instance and validation from a
 // typed flag to options to a flag object for the command
 // line.
 func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
-	var out Flag
+	out := Flag{validateOnce: &adt.Once[error]{}}
 
 	switch dval := any(opts.Default).(type) {
 	case string:
-		out.value = cli.StringFlag{
+		out.value = &cli.StringFlag{
 			Name:        opts.Name,
+			Aliases:     opts.Aliases,
 			Usage:       opts.Usage,
-			EnvVar:      opts.EnvVar,
 			FilePath:    opts.FilePath,
 			Required:    opts.Required,
 			Hidden:      opts.Hidden,
 			Value:       dval,
 			Destination: any(opts.Destination).(*string),
+			Action: func(cc *cli.Context, val string) error {
+				return out.validateOnce.Do(func() error {
+					return opts.doValidate(any(val).(T))
+				})
+			},
 		}
-		out.validate = getValidateFunction(
-			opts.Name,
-			func(in string, c *cli.Context) T { return any(c.String(in)).(T) },
-			opts.Validate,
-		)
 	case int:
-		out.value = cli.IntFlag{
+		out.value = &cli.IntFlag{
 			Name:        opts.Name,
+			Aliases:     opts.Aliases,
 			Usage:       opts.Usage,
-			EnvVar:      opts.EnvVar,
 			FilePath:    opts.FilePath,
 			Required:    opts.Required,
 			Hidden:      opts.Hidden,
 			Value:       dval,
 			Destination: any(opts.Destination).(*int),
+			Action: func(cc *cli.Context, val int) error {
+				return out.validateOnce.Do(func() error {
+					return opts.doValidate(any(val).(T))
+				})
+			},
 		}
-		out.validate = getValidateFunction(
-			opts.Name,
-			func(in string, c *cli.Context) T { return any(c.Int(in)).(T) },
-			opts.Validate,
-		)
-	case time.Duration:
-		out.value = cli.DurationFlag{
+	case uint:
+		out.value = &cli.UintFlag{
+			Name:        opts.Name,
+			Aliases:     opts.Aliases,
+			Usage:       opts.Usage,
+			FilePath:    opts.FilePath,
+			Required:    opts.Required,
+			Hidden:      opts.Hidden,
+			Value:       dval,
+			Destination: any(opts.Destination).(*uint),
+			Action: func(cc *cli.Context, val uint) error {
+				return out.validateOnce.Do(func() error {
+					return opts.doValidate(any(val).(T))
+				})
+			},
+		}
+	case int64:
+		out.value = &cli.Int64Flag{
+			Name:        opts.Name,
+			Aliases:     opts.Aliases,
+			Usage:       opts.Usage,
+			FilePath:    opts.FilePath,
+			Required:    opts.Required,
+			Hidden:      opts.Hidden,
+			Value:       dval,
+			Destination: any(opts.Destination).(*int64),
+			Action: func(cc *cli.Context, val int64) error {
+				return out.validateOnce.Do(func() error {
+					return opts.doValidate(any(val).(T))
+				})
+			},
+		}
+	case uint64:
+		out.value = &cli.Uint64Flag{
+			Name:        opts.Name,
+			Aliases:     opts.Aliases,
+			Usage:       opts.Usage,
+			FilePath:    opts.FilePath,
+			Required:    opts.Required,
+			Hidden:      opts.Hidden,
+			Value:       dval,
+			Destination: any(opts.Destination).(*uint64),
+			Action: func(cc *cli.Context, val uint64) error {
+				return out.validateOnce.Do(func() error {
+					return opts.doValidate(any(val).(T))
+				})
+			},
+		}
+	case float64:
+		out.value = &cli.Float64Flag{
+			Name:        opts.Name,
+			Aliases:     opts.Aliases,
+			Usage:       opts.Usage,
+			FilePath:    opts.FilePath,
+			Required:    opts.Required,
+			Hidden:      opts.Hidden,
+			Value:       dval,
+			Destination: any(opts.Destination).(*float64),
+			Action: func(cc *cli.Context, val float64) error {
+				return out.validateOnce.Do(func() error {
+					return opts.doValidate(any(val).(T))
+				})
+			},
+		}
+	case bool:
+		out.value = &cli.BoolFlag{
+			Name:        opts.Name,
+			Aliases:     opts.Aliases,
+			Usage:       opts.Usage,
+			FilePath:    opts.FilePath,
+			Required:    opts.Required,
+			Hidden:      opts.Hidden,
+			Value:       dval,
+			Destination: any(opts.Destination).(*bool),
+			Action: func(cc *cli.Context, val bool) error {
+				return out.validateOnce.Do(func() error {
+					return opts.doValidate(any(val).(T))
+				})
+			},
+		}
+	case time.Time:
+		if opts.TimestampLayout == "" {
+			opts.TimestampLayout = time.RFC3339
+		}
+
+		out.value = &cli.TimestampFlag{
 			Name:     opts.Name,
+			Aliases:  opts.Aliases,
 			Usage:    opts.Usage,
-			EnvVar:   opts.EnvVar,
+			FilePath: opts.FilePath,
+			Required: opts.Required,
+			Hidden:   opts.Hidden,
+			Value:    cli.NewTimestamp(dval),
+			Layout:   opts.TimestampLayout,
+			Action: func(cc *cli.Context, val *time.Time) error {
+				return out.validateOnce.Do(func() error {
+					return opts.doValidate(any(*val).(T))
+				})
+
+			},
+		}
+	case time.Duration:
+		out.value = &cli.DurationFlag{
+			Name:     opts.Name,
+			Aliases:  opts.Aliases,
+			Usage:    opts.Usage,
 			FilePath: opts.FilePath,
 			Required: opts.Required,
 			Hidden:   opts.Hidden,
 			Value:    dval,
-		}
-
-		out.validate = getValidateFunction(
-			opts.Name,
-			func(in string, c *cli.Context) T { return any(c.Duration(in)).(T) },
-			opts.Validate,
-		)
-	case int64:
-		out.value = cli.Int64Flag{
-			Name:        opts.Name,
-			Usage:       opts.Usage,
-			EnvVar:      opts.EnvVar,
-			FilePath:    opts.FilePath,
-			Required:    opts.Required,
-			Hidden:      opts.Hidden,
-			Value:       any(opts.Default).(int64),
-			Destination: any(opts.Destination).(*int64),
-		}
-		out.validate = getValidateFunction(
-			opts.Name,
-			func(in string, c *cli.Context) T { return any(c.Int64(in)).(T) },
-			opts.Validate,
-		)
-	case float64:
-		out.value = cli.Float64Flag{
-			Name:        opts.Name,
-			Usage:       opts.Usage,
-			EnvVar:      opts.EnvVar,
-			FilePath:    opts.FilePath,
-			Required:    opts.Required,
-			Hidden:      opts.Hidden,
-			Value:       any(opts.Default).(float64),
-			Destination: any(opts.Destination).(*float64),
-		}
-		out.validate = getValidateFunction(
-			opts.Name,
-			func(in string, c *cli.Context) T { return any(c.Float64(in)).(T) },
-			opts.Validate,
-		)
-	case bool:
-		if dval {
-			out.value = cli.BoolTFlag{
-				Name:        opts.Name,
-				Usage:       opts.Usage,
-				EnvVar:      opts.EnvVar,
-				FilePath:    opts.FilePath,
-				Required:    opts.Required,
-				Hidden:      opts.Hidden,
-				Destination: any(opts.Destination).(*bool),
-			}
-		} else {
-			out.value = cli.BoolFlag{
-				Name:        opts.Name,
-				Usage:       opts.Usage,
-				EnvVar:      opts.EnvVar,
-				FilePath:    opts.FilePath,
-				Required:    opts.Required,
-				Hidden:      opts.Hidden,
-				Destination: any(opts.Destination).(*bool),
-			}
+			Action: func(cc *cli.Context, val time.Duration) error {
+				return out.validateOnce.Do(func() error {
+					return opts.doValidate(any(val).(T))
+				})
+			},
 		}
 	case []string:
-		o := cli.StringSliceFlag{
+		o := &cli.StringSliceFlag{
 			Name:     opts.Name,
+			Aliases:  opts.Aliases,
 			Usage:    opts.Usage,
-			EnvVar:   opts.EnvVar,
 			FilePath: opts.FilePath,
 			Required: opts.Required,
 			Hidden:   opts.Hidden,
+			Action: func(cc *cli.Context, val []string) error {
+				return out.validateOnce.Do(func() error {
+					return opts.doValidate(any(val).(T))
+				})
+			},
 		}
 		fun.Invariant(len(dval) == 0, "slice flags should not have default values")
 		fun.Invariant(opts.Destination == nil, "cannot specify destination for slice values")
 
 		out.value = o
-		out.validate = getValidateFunction(
-			opts.Name,
-			func(in string, c *cli.Context) T { return any(c.StringSlice(in)).(T) },
-			opts.Validate,
-		)
 	case []int:
-		o := cli.IntSliceFlag{
+		out.value = &cli.IntSliceFlag{
 			Name:     opts.Name,
+			Aliases:  opts.Aliases,
 			Usage:    opts.Usage,
-			EnvVar:   opts.EnvVar,
 			FilePath: opts.FilePath,
 			Required: opts.Required,
 			Hidden:   opts.Hidden,
+			Action: func(cc *cli.Context, val []int) error {
+				return out.validateOnce.Do(func() error {
+					return opts.doValidate(any(val).(T))
+				})
+			},
 		}
 		fun.Invariant(len(dval) == 0, "slice flags should not have default values")
 		fun.Invariant(opts.Destination == nil, "cannot specify destination for slice values")
-
-		out.value = o
-		out.validate = getValidateFunction(
-			opts.Name,
-			func(in string, c *cli.Context) T { return any(c.IntSlice(in)).(T) },
-			opts.Validate,
-		)
 	case []int64:
-		o := cli.Int64SliceFlag{
+		out.value = &cli.Int64SliceFlag{
 			Name:     opts.Name,
+			Aliases:  opts.Aliases,
 			Usage:    opts.Usage,
-			EnvVar:   opts.EnvVar,
 			FilePath: opts.FilePath,
 			Required: opts.Required,
 			Hidden:   opts.Hidden,
+			Action: func(cc *cli.Context, val []int64) error {
+				return out.validateOnce.Do(func() error {
+					return opts.doValidate(any(val).(T))
+				})
+			},
 		}
 
 		fun.Invariant(len(dval) == 0, "slice flags should not have default values")
 		fun.Invariant(opts.Destination == nil, "cannot specify destination for slice values")
-
-		out.value = o
-		out.validate = getValidateFunction(
-			opts.Name,
-			func(in string, c *cli.Context) T { return any(c.Int64Slice(in)).(T) },
-			opts.Validate,
-		)
 	}
 
 	return out

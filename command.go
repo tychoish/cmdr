@@ -8,7 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v2"
 
 	"github.com/tychoish/fun"
 	"github.com/tychoish/fun/adt"
@@ -126,8 +126,8 @@ func MakeCommander() *Commander {
 		c.flags.With(func(flags *seq.List[Flag]) {
 			ec.Add(fun.Observe(ctx, seq.ListValues(flags.Iterator()),
 				func(fl Flag) {
-					if fl.validate != nil {
-						ec.Add(fl.validate(cc))
+					if af, ok := fl.value.(cli.ActionableFlag); ok {
+						ec.Add(af.RunAction(cc))
 					}
 				}))
 		})
@@ -148,12 +148,11 @@ func MakeCommander() *Commander {
 			return fmt.Errorf("action: %w", ErrNotDefined)
 		}
 
-		args := cc.Args()
-		if len(args) == 0 {
+		if cc.Args().Len() == 0 {
 			return erc.Merge(cli.ShowAppHelp(cc), fmt.Errorf("no operation for %q: %w", c.cmd.Name, ErrNotSpecified))
 		}
 
-		return erc.Merge(cli.ShowCommandHelp(cc, c.cmd.Name), fmt.Errorf("command %v: %w", args, ErrNotDefined))
+		return erc.Merge(cli.ShowCommandHelp(cc, c.cmd.Name), fmt.Errorf("command %v: %w", cc.Args().Len(), ErrNotDefined))
 	}
 
 	return c
@@ -209,11 +208,11 @@ func (c *Commander) Subcommanders(subs ...*Commander) *Commander {
 // The commander processes the sub commands recursively. All wrapping
 // happens when building the cli.App/cli.Command for the converter,
 // and has limited overhead.
-func (c *Commander) UrfaveCommands(cc ...cli.Command) *Commander {
+func (c *Commander) UrfaveCommands(cc ...*cli.Command) *Commander {
 	c.subcmds.With(func(in *seq.List[*Commander]) {
 		for idx := range cc {
 			sub := MakeCommander()
-			sub.cmd = cc[idx]
+			sub.cmd = *cc[idx]
 			in.PushBack(sub)
 		}
 	})
@@ -245,7 +244,7 @@ func (c *Commander) With(op func(c *Commander)) *Commander { op(c); return c }
 //
 // You should only call this function *after* setting the context on
 // the commander.
-func (c *Commander) Command() cli.Command {
+func (c *Commander) Command() *cli.Command {
 	c.once.Do(func() {
 		ctx := c.getContext()
 		fun.Invariant(ctx != nil, "context must be set when calling command")
@@ -274,37 +273,9 @@ func (c *Commander) Command() cli.Command {
 				c.cmd.Subcommands = append(c.cmd.Subcommands, v.Command())
 			}))
 		})
-		reformCommands(ctx, []cli.Command{c.cmd})
 	})
 
-	return c.cmd
-}
-
-func reformCommands(ctx context.Context, cmds []cli.Command) {
-	for idx := range cmds {
-		switch cc := cmds[idx].Action.(type) {
-		case nil:
-			// top level commands often don't have actions
-			// of their own. That's fine.
-		case func(*cli.Context) error:
-			// this is the correct form but we should
-			// recurse through subcommands later
-		case func(context.Context) error:
-			cmds[idx].Action = func(_ *cli.Context) error { return cc(ctx) }
-		case func(context.Context, *cli.Context) error:
-			cmds[idx].Action = func(c *cli.Context) error { return cc(ctx, c) }
-		case func(context.Context):
-			cmds[idx].Action = func(_ *cli.Context) error { cc(ctx); return nil }
-		case func() error:
-			cmds[idx].Action = func(_ *cli.Context) error { return cc() }
-		case func():
-			cmds[idx].Action = func(_ *cli.Context) error { cc(); return nil }
-		default:
-			// malformed, there's nothing to do except it
-			// error later.
-		}
-		reformCommands(ctx, cmds[idx].Subcommands)
-	}
+	return &c.cmd
 }
 
 // AppOptions provides the structure for construction a cli.App from a
