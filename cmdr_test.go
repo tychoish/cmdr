@@ -8,6 +8,7 @@ import (
 
 	"github.com/urfave/cli/v2"
 
+	"github.com/tychoish/fun/adt"
 	"github.com/tychoish/fun/assert"
 	"github.com/tychoish/fun/assert/check"
 	"github.com/tychoish/fun/seq"
@@ -56,20 +57,20 @@ func TestCommander(t *testing.T) {
 			})
 		})
 		t.Run("ErrorUndefined", func(t *testing.T) {
-			cmd := MakeCommander().SetContext(ctx)
+			cmd := MakeRootCommander().setContext(ctx)
 			err := cmd.App().Run([]string{"hello"})
 			assert.Error(t, err)
 			assert.ErrorIs(t, err, ErrNotDefined)
 		})
 	})
 	t.Run("DefineSubcommand", func(t *testing.T) {
-		cmd := MakeCommander().SetContext(ctx).Subcommanders(MakeCommander()).SetName("hello").SetAction(func(context.Context, *cli.Context) error { return nil })
+		cmd := MakeRootCommander().setContext(ctx).Subcommanders(MakeCommander()).SetName("hello").SetAction(func(context.Context, *cli.Context) error { return nil })
 		assert.NotError(t, cmd.App().Run([]string{t.Name(), "hello"}))
 	})
 	t.Run("EndToEnd", func(t *testing.T) {
 		t.Run("Run", func(t *testing.T) {
 			count := 0
-			cmd := MakeCommander().
+			cmd := MakeRootCommander().
 				Hooks(func(ctx context.Context, cc *cli.Context) error {
 					count++
 					return nil
@@ -97,7 +98,7 @@ func TestCommander(t *testing.T) {
 		})
 		t.Run("Operation", func(t *testing.T) {
 			count := 0
-			cmd := MakeCommander().
+			cmd := MakeRootCommander().
 				Hooks(func(ctx context.Context, cc *cli.Context) error {
 					count++
 					return nil
@@ -131,7 +132,7 @@ func TestCommander(t *testing.T) {
 			assert.Equal(t, 3, count)
 		})
 		t.Run("Subcommanders", func(t *testing.T) {
-			cmd := MakeRootCommander().SetName("foo").SetContext(ctx)
+			cmd := MakeRootCommander().SetName("foo").setContext(ctx)
 			sub := Subcommander(cmd,
 				func(ctx context.Context, cc *cli.Context) (string, error) { return "", nil },
 				func(ctx context.Context, in string) error { return nil },
@@ -148,6 +149,7 @@ func TestCommander(t *testing.T) {
 			t.Run("Basic", func(t *testing.T) {
 				count := 0
 				cmd := MakeCommander()
+				cmd.ctx = adt.NewAtomic(ctxMaker(ctx))
 				AddOperationSpec(cmd, &OperationSpec[string]{
 					Constructor: func(ctx context.Context, cc *cli.Context) (string, error) { count++; return "hi", nil },
 					HookOperations: []Operation[string]{
@@ -173,6 +175,7 @@ func TestCommander(t *testing.T) {
 			t.Run("Builder", func(t *testing.T) {
 				count := 0
 				cmd := MakeCommander()
+				cmd.ctx = adt.NewAtomic(ctxMaker(ctx))
 				AddOperationSpec(cmd,
 					SpecBuilder(func(ctx context.Context, cc *cli.Context) (string, error) {
 						count++
@@ -202,7 +205,7 @@ func TestCommander(t *testing.T) {
 
 			t.Run("HookErrorAborts", func(t *testing.T) {
 				count := 0
-				cmd := MakeCommander()
+				cmd := MakeRootCommander()
 				AddOperationSpec(cmd, &OperationSpec[string]{
 					Constructor: func(ctx context.Context, cc *cli.Context) (string, error) { count++; return "hi", nil },
 					HookOperations: []Operation[string]{func(ctx context.Context, in string) error {
@@ -222,7 +225,7 @@ func TestCommander(t *testing.T) {
 		t.Run("CompositeHook", func(t *testing.T) {
 			t.Run("Hook", func(t *testing.T) {
 				count := 0
-				cmd := MakeCommander()
+				cmd := MakeRootCommander()
 				AddOperation(cmd,
 					CompositeHook(
 						func(ctx context.Context, cc *cli.Context) (string, error) { count++; return "hi", nil },
@@ -244,7 +247,7 @@ func TestCommander(t *testing.T) {
 			t.Run("Errors", func(t *testing.T) {
 				t.Run("Constructor", func(t *testing.T) {
 					count := 0
-					cmd := MakeCommander()
+					cmd := MakeRootCommander()
 					AddOperation(cmd,
 						CompositeHook(
 							func(ctx context.Context, cc *cli.Context) (string, error) { count++; return "", errors.New("abort") },
@@ -261,7 +264,7 @@ func TestCommander(t *testing.T) {
 			})
 			t.Run("Run", func(t *testing.T) {
 				count := 0
-				cmd := MakeCommander()
+				cmd := MakeRootCommander()
 				AddOperation(cmd,
 					CompositeHook(
 						func(ctx context.Context, cc *cli.Context) (string, error) { count++; return "hi", nil },
@@ -377,7 +380,7 @@ func TestCommander(t *testing.T) {
 			})
 			t.Run("AddCommand", func(t *testing.T) {
 				count := 0
-				cmd := MakeCommander().
+				cmd := MakeRootCommander().
 					Hooks(func(ctx context.Context, cc *cli.Context) error {
 						count++
 						return nil
@@ -395,7 +398,7 @@ func TestCommander(t *testing.T) {
 							return nil
 						},
 					})).
-					SetContext(ctx).
+					setContext(ctx).
 					SetName("sub").
 					SetUsage("usage")
 
@@ -425,8 +428,8 @@ func TestCommander(t *testing.T) {
 		assert.ErrorIs(t, err, ErrNotDefined)
 	})
 	t.Run("ResolutionIsIdempotent", func(t *testing.T) {
-		cmd := MakeCommander()
-		cmd.SetContext(ctx)
+		cmd := MakeRootCommander()
+		cmd.setContext(ctx)
 		assert.Equal(t, 0, cmd.numFlags())
 		assert.Equal(t, 0, cmd.numHooks())
 		assert.Equal(t, 0, cmd.numSubcommands())
@@ -451,7 +454,7 @@ func TestCommander(t *testing.T) {
 		assert.Equal(t, len(out.Subcommands), 1)
 	})
 	t.Run("AppResolutionIsUnique", func(t *testing.T) {
-		cmd := MakeCommander().Flags(MakeFlag(&FlagOptions[string]{Name: "first"})).
+		cmd := MakeRootCommander().Flags(MakeFlag(&FlagOptions[string]{Name: "first"})).
 			Hooks(func(context.Context, *cli.Context) error {
 				return nil
 			}).
@@ -470,7 +473,7 @@ func TestCommander(t *testing.T) {
 				return nil
 			},
 		}))
-		cmd.SetContext(ctx)
+		cmd.setContext(ctx)
 		app1 := cmd.App()
 		app2 := cmd.App()
 		if app1 == app2 {

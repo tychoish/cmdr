@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 
+	"github.com/tychoish/fun/adt"
 	"github.com/tychoish/grip"
 )
 
@@ -16,9 +17,14 @@ var ErrNotSet = errors.New("not set")
 
 // Run executes a commander with the specified command line arguments.
 func Run(ctx context.Context, c *Commander, args []string) error {
-	c.SetContext(ctx)
+	if c.ctx == nil {
+		grip.Alertf("commander %q is not a root commander, and ought to be", c.name.Get())
+		c.ctx = adt.NewAtomic(ctxMaker(ctx))
+	}
+
+	c.setContext(ctx)
 	app := c.App()
-	return app.Run(args)
+	return app.RunContext(c.getContext(), args)
 }
 
 // Main provides an alternative to Run() for calling within in a

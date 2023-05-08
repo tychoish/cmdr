@@ -57,7 +57,6 @@ type Commander struct {
 	cmd        cli.Command
 	hidden     atomic.Bool
 	blocking   atomic.Bool
-	ctx        adt.Atomic[contextProducer]
 	opts       adt.Atomic[AppOptions]
 	name       adt.Atomic[string]
 	usage      adt.Atomic[string]
@@ -67,6 +66,16 @@ type Commander struct {
 	hook       adt.Synchronized[*seq.List[Action]]
 	middleware adt.Synchronized[*seq.List[Middleware]]
 	subcmds    adt.Synchronized[*seq.List[*Commander]]
+
+	// this has to be a context producer (func() context.Context)
+	// so that the interior atomic doesn't freak out when the
+	// interface type changes.
+	//
+	// additionally, when resolving subcmds we have to make sure
+	// that every subcommand get access to the same context
+	// hierarchy (to do otherwise would be unexpected); so during
+	// resolution of the command (but not adding)
+	ctx *adt.Atomic[contextProducer]
 }
 
 // MakeRootCommander constructs a root commander object with basic
@@ -79,6 +88,7 @@ type Commander struct {
 func MakeRootCommander() *Commander {
 	c := MakeCommander()
 	c.SetName(filepath.Base(os.Args[0]))
+	c.ctx = adt.NewAtomic(ctxMaker(context.Background()))
 	c.middleware.With(func(in *seq.List[Middleware]) {
 		in.PushBack(srv.SetBaseContext)
 		in.PushBack(srv.SetShutdownSignal)
@@ -87,12 +97,11 @@ func MakeRootCommander() *Commander {
 	})
 
 	c.cmd.After = func(_ *cli.Context) error {
-		ctx := c.getContext()
 		if !c.blocking.Load() {
 			// cancel the parent context
-			srv.GetShutdownSignal(ctx)()
+			srv.GetShutdownSignal(c.getContext())()
 		}
-		return srv.GetOrchestrator(ctx).Wait()
+		return srv.GetOrchestrator(c.getContext()).Wait()
 	}
 
 	return c
@@ -111,28 +120,24 @@ func MakeCommander() *Commander {
 	c.cmd.Before = func(cc *cli.Context) error {
 		ec := &erc.Collector{}
 
-		ctx := c.getContext()
-
 		c.hook.With(func(hooks *seq.List[Action]) {
-			ec.Add(fun.Observe(ctx, seq.ListValues(hooks.Iterator()),
-				func(op Action) { ec.Add(op(ctx, cc)) }))
+			ec.Add(fun.Observe(c.getContext(), seq.ListValues(hooks.Iterator()),
+				func(op Action) { ec.Add(op(c.getContext(), cc)) }))
 		})
 
 		c.middleware.With(func(in *seq.List[Middleware]) {
-			ec.Add(fun.Observe(ctx, seq.ListValues(in.Iterator()),
-				func(mw Middleware) { ctx = mw(ctx) }))
+			ec.Add(fun.Observe(c.getContext(), seq.ListValues(in.Iterator()),
+				func(mw Middleware) { c.setContext(mw(c.getContext())) }))
 		})
 
 		c.flags.With(func(flags *seq.List[Flag]) {
-			ec.Add(fun.Observe(ctx, seq.ListValues(flags.Iterator()),
+			ec.Add(fun.Observe(c.getContext(), seq.ListValues(flags.Iterator()),
 				func(fl Flag) {
 					if af, ok := fl.value.(cli.ActionableFlag); ok {
 						ec.Add(af.RunAction(cc))
 					}
 				}))
 		})
-
-		c.SetContext(ctx)
 
 		return ec.Resolve()
 	}
@@ -175,10 +180,10 @@ func (c *Commander) SetUsage(u string) *Commander   { c.usage.Set(u); return c }
 // passed to the cmdr.Run or cmdr.Main functions to expire.
 func (c *Commander) SetBlocking(b bool) *Commander { c.blocking.Store(b); return c }
 
-// SetContext attaches a context to the commander. This is only needed
+// setContext attaches a context to the commander. This is only needed
 // if you are NOT using the commander with the Run() or Main()
 // methods.
-func (c *Commander) SetContext(ctx context.Context) *Commander { c.ctx.Set(ctxMaker(ctx)); return c }
+func (c *Commander) setContext(ctx context.Context) *Commander { c.ctx.Set(ctxMaker(ctx)); return c }
 func (c *Commander) getContext() context.Context               { return c.ctx.Get()() }
 
 // Subcommanders adds a subcommander, returning the original parent
@@ -246,8 +251,7 @@ func (c *Commander) With(op func(c *Commander)) *Commander { op(c); return c }
 // the commander.
 func (c *Commander) Command() *cli.Command {
 	c.once.Do(func() {
-		ctx := c.getContext()
-		fun.Invariant(ctx != nil, "context must be set when calling command")
+		fun.Invariant(c.getContext() != nil, "context must be set when calling command")
 
 		c.cmd.Name = secondValueWhenFirstIsZero(c.cmd.Name, c.name.Get())
 		c.cmd.Usage = secondValueWhenFirstIsZero(c.cmd.Usage, c.usage.Get())
@@ -256,20 +260,20 @@ func (c *Commander) Command() *cli.Command {
 		if len(c.cmd.Aliases) == 0 {
 			var aliases []string
 			c.aliases.With(func(in *seq.List[string]) {
-				aliases = fun.Must(itertool.CollectSlice(ctx, seq.ListValues(in.Iterator())))
+				aliases = fun.Must(itertool.CollectSlice(c.getContext(), seq.ListValues(in.Iterator())))
 			})
 			c.cmd.Aliases = aliases
 		}
 
 		c.flags.With(func(in *seq.List[Flag]) {
-			fun.InvariantMust(fun.Observe(ctx, seq.ListValues(in.Iterator()), func(v Flag) {
+			fun.InvariantMust(fun.Observe(c.getContext(), seq.ListValues(in.Iterator()), func(v Flag) {
 				c.cmd.Flags = append(c.cmd.Flags, v.value)
 			}))
 		})
 
 		c.subcmds.With(func(in *seq.List[*Commander]) {
-			fun.InvariantMust(fun.Observe(ctx, seq.ListValues(in.Iterator()), func(v *Commander) {
-				v.SetContext(ctx)
+			fun.InvariantMust(fun.Observe(c.getContext(), seq.ListValues(in.Iterator()), func(v *Commander) {
+				v.ctx = c.ctx
 				c.cmd.Subcommands = append(c.cmd.Subcommands, v.Command())
 			}))
 		})
@@ -292,7 +296,7 @@ func (c *Commander) SetAppOptions(opts AppOptions) *Commander { c.opts.Set(opts)
 
 // App resolves a command object from the commander and the provided
 // options. You must set the context on the Commander using the
-// SetContext before calling this command directly.
+// setContext before calling this command directly.
 //
 // In most cases you will use the Run() or Main() methods, rather than
 // App() to use the commander, and Run()/Main() provide their own
@@ -300,6 +304,7 @@ func (c *Commander) SetAppOptions(opts AppOptions) *Commander { c.opts.Set(opts)
 func (c *Commander) App() *cli.App {
 	fun.Invariant(c.ctx.Get() != nil, "context must be set before calling the app")
 	a := c.opts.Get()
+
 	cmd := c.Command()
 	app := cli.NewApp()
 
