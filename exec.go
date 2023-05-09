@@ -31,5 +31,6 @@ func Run(ctx context.Context, c *Commander, args []string) error {
 // program's main() function. Non-nil errors are logged at the
 // "Emergency" level and os.Exit(1) is called.
 func Main(ctx context.Context, c *Commander) {
-	grip.Context(ctx).EmergencyFatal(Run(ctx, c, os.Args))
+	err := Run(ctx, c, os.Args)
+	grip.Context(c.getContext()).EmergencyFatal(err)
 }
