@@ -309,6 +309,11 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 	return out
 }
 
+// GetFlag resolves a flag of the specified name to the type as
+// specified.
+//
+// This will panic at runtime if the type of the flag specified does
+// not match the type of the flag as defined.
 func GetFlag[T FlagTypes](cc *cli.Context, name string) T {
 	var out T
 
