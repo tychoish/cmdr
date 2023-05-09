@@ -308,3 +308,36 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 
 	return out
 }
+
+func GetFlag[T FlagTypes](cc *cli.Context, name string) T {
+	var out T
+
+	switch any(fun.ZeroOf[T]()).(type) {
+	case string:
+		out = any(cc.String(name)).(T)
+	case int:
+		out = any(cc.Int(name)).(T)
+	case uint:
+		out = any(cc.Uint(name)).(T)
+	case int64:
+		out = any(cc.Int64(name)).(T)
+	case uint64:
+		out = any(cc.Uint64(name)).(T)
+	case float64:
+		out = any(cc.Float64(name)).(T)
+	case bool:
+		out = any(cc.Bool(name)).(T)
+	case time.Time:
+		out = any(*cc.Timestamp(name)).(T)
+	case time.Duration:
+		out = any(cc.Duration(name)).(T)
+	case []string:
+		out = any(cc.StringSlice(name)).(T)
+	case []int:
+		out = any(cc.IntSlice(name)).(T)
+	case []int64:
+		out = any(cc.Int64Slice(name)).(T)
+	}
+
+	return out
+}
