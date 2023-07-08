@@ -12,9 +12,9 @@ import (
 
 	"github.com/tychoish/fun"
 	"github.com/tychoish/fun/adt"
+	"github.com/tychoish/fun/dt"
 	"github.com/tychoish/fun/erc"
-	"github.com/tychoish/fun/itertool"
-	"github.com/tychoish/fun/seq"
+	"github.com/tychoish/fun/ft"
 	"github.com/tychoish/fun/srv"
 )
 
@@ -61,11 +61,11 @@ type Commander struct {
 	name       adt.Atomic[string]
 	usage      adt.Atomic[string]
 	action     adt.Atomic[Action]
-	flags      adt.Synchronized[*seq.List[Flag]]
-	aliases    adt.Synchronized[*seq.List[string]]
-	hook       adt.Synchronized[*seq.List[Action]]
-	middleware adt.Synchronized[*seq.List[Middleware]]
-	subcmds    adt.Synchronized[*seq.List[*Commander]]
+	flags      adt.Synchronized[*dt.List[Flag]]
+	aliases    adt.Synchronized[*dt.List[string]]
+	hook       adt.Synchronized[*dt.List[Action]]
+	middleware adt.Synchronized[*dt.List[Middleware]]
+	subcmds    adt.Synchronized[*dt.List[*Commander]]
 
 	// this has to be a context producer (func() context.Context)
 	// so that the interior atomic doesn't freak out when the
@@ -89,7 +89,7 @@ func MakeRootCommander() *Commander {
 	c := MakeCommander()
 	c.SetName(filepath.Base(os.Args[0]))
 	c.ctx = adt.NewAtomic(ctxMaker(context.Background()))
-	c.middleware.With(func(in *seq.List[Middleware]) {
+	c.middleware.With(func(in *dt.List[Middleware]) {
 		in.PushBack(srv.SetBaseContext)
 		in.PushBack(srv.SetShutdownSignal)
 		in.PushBack(srv.WithOrchestrator) // this starts the orchestrator
@@ -111,32 +111,29 @@ func MakeRootCommander() *Commander {
 func MakeCommander() *Commander {
 	c := &Commander{}
 
-	c.flags.Set(&seq.List[Flag]{})
-	c.hook.Set(&seq.List[Action]{})
-	c.subcmds.Set(&seq.List[*Commander]{})
-	c.middleware.Set(&seq.List[Middleware]{})
-	c.aliases.Set(&seq.List[string]{})
+	c.flags.Set(&dt.List[Flag]{})
+	c.hook.Set(&dt.List[Action]{})
+	c.subcmds.Set(&dt.List[*Commander]{})
+	c.middleware.Set(&dt.List[Middleware]{})
+	c.aliases.Set(&dt.List[string]{})
 
 	c.cmd.Before = func(cc *cli.Context) error {
 		ec := &erc.Collector{}
 
-		c.hook.With(func(hooks *seq.List[Action]) {
-			ec.Add(fun.Observe(c.getContext(), seq.ListValues(hooks.Iterator()),
-				func(op Action) { ec.Add(op(c.getContext(), cc)) }))
+		c.hook.With(func(hooks *dt.List[Action]) {
+			ec.Add(hooks.Iterator().Observe(c.getContext(), func(op Action) { ec.Add(op(c.getContext(), cc)) }))
 		})
 
-		c.middleware.With(func(in *seq.List[Middleware]) {
-			ec.Add(fun.Observe(c.getContext(), seq.ListValues(in.Iterator()),
-				func(mw Middleware) { c.setContext(mw(c.getContext())) }))
+		c.middleware.With(func(in *dt.List[Middleware]) {
+			ec.Add(in.Iterator().Observe(c.getContext(), func(mw Middleware) { c.setContext(mw(c.getContext())) }))
 		})
 
-		c.flags.With(func(flags *seq.List[Flag]) {
-			ec.Add(fun.Observe(c.getContext(), seq.ListValues(flags.Iterator()),
-				func(fl Flag) {
-					if af, ok := fl.value.(cli.ActionableFlag); ok {
-						ec.Add(af.RunAction(cc))
-					}
-				}))
+		c.flags.With(func(flags *dt.List[Flag]) {
+			ec.Add(flags.Iterator().Observe(c.getContext(), func(fl Flag) {
+				if af, ok := fl.value.(cli.ActionableFlag); ok {
+					ec.Add(af.RunAction(cc))
+				}
+			}))
 		})
 
 		return ec.Resolve()
@@ -154,10 +151,10 @@ func MakeCommander() *Commander {
 		}
 
 		if cc.Args().Len() == 0 {
-			return erc.Merge(cli.ShowAppHelp(cc), fmt.Errorf("no operation for %q: %w", c.cmd.Name, ErrNotSpecified))
+			return erc.Join(cli.ShowAppHelp(cc), fmt.Errorf("no operation for %q: %w", c.cmd.Name, ErrNotSpecified))
 		}
 
-		return erc.Merge(cli.ShowCommandHelp(cc, c.cmd.Name), fmt.Errorf("command %v: %w", cc.Args().Len(), ErrNotDefined))
+		return erc.Join(cli.ShowCommandHelp(cc, c.cmd.Name), fmt.Errorf("command %v: %w", cc.Args().Len(), ErrNotDefined))
 	}
 
 	return c
@@ -214,7 +211,7 @@ func (c *Commander) Subcommanders(subs ...*Commander) *Commander {
 // happens when building the cli.App/cli.Command for the converter,
 // and has limited overhead.
 func (c *Commander) UrfaveCommands(cc ...*cli.Command) *Commander {
-	c.subcmds.With(func(in *seq.List[*Commander]) {
+	c.subcmds.With(func(in *dt.List[*Commander]) {
 		for idx := range cc {
 			sub := MakeCommander()
 			sub.cmd = *cc[idx]
@@ -251,7 +248,7 @@ func (c *Commander) With(op func(c *Commander)) *Commander { op(c); return c }
 // the commander.
 func (c *Commander) Command() *cli.Command {
 	c.once.Do(func() {
-		fun.Invariant(c.getContext() != nil, "context must be set when calling command")
+		fun.Invariant.OK(c.getContext() != nil, "context must be set when calling command")
 
 		c.cmd.Name = secondValueWhenFirstIsZero(c.cmd.Name, c.name.Get())
 		c.cmd.Usage = secondValueWhenFirstIsZero(c.cmd.Usage, c.usage.Get())
@@ -259,20 +256,20 @@ func (c *Commander) Command() *cli.Command {
 
 		if len(c.cmd.Aliases) == 0 {
 			var aliases []string
-			c.aliases.With(func(in *seq.List[string]) {
-				aliases = fun.Must(itertool.CollectSlice(c.getContext(), seq.ListValues(in.Iterator())))
+			c.aliases.With(func(in *dt.List[string]) {
+				aliases = ft.Must(in.Iterator().Slice(c.getContext()))
 			})
 			c.cmd.Aliases = aliases
 		}
 
-		c.flags.With(func(in *seq.List[Flag]) {
-			fun.InvariantMust(fun.Observe(c.getContext(), seq.ListValues(in.Iterator()), func(v Flag) {
+		c.flags.With(func(in *dt.List[Flag]) {
+			fun.Invariant.Must(in.Iterator().Observe(c.getContext(), func(v Flag) {
 				c.cmd.Flags = append(c.cmd.Flags, v.value)
 			}))
 		})
 
-		c.subcmds.With(func(in *seq.List[*Commander]) {
-			fun.InvariantMust(fun.Observe(c.getContext(), seq.ListValues(in.Iterator()), func(v *Commander) {
+		c.subcmds.With(func(in *dt.List[*Commander]) {
+			fun.Invariant.Must(in.Iterator().Observe(c.getContext(), func(v *Commander) {
 				v.ctx = c.ctx
 				c.cmd.Subcommands = append(c.cmd.Subcommands, v.Command())
 			}))
@@ -302,7 +299,7 @@ func (c *Commander) SetAppOptions(opts AppOptions) *Commander { c.opts.Set(opts)
 // App() to use the commander, and Run()/Main() provide their own
 // contexts.
 func (c *Commander) App() *cli.App {
-	fun.Invariant(c.ctx.Get() != nil, "context must be set before calling the app")
+	fun.Invariant.OK(c.ctx.Get() != nil, "context must be set before calling the app")
 	a := c.opts.Get()
 
 	cmd := c.Command()

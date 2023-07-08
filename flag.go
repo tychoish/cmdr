@@ -67,7 +67,7 @@ func (fo *FlagOptions[T]) AddAliases(a ...string) *FlagOptions[T] {
 
 func (fo *FlagOptions[T]) SetTimestmapLayout(l string) *FlagOptions[T] {
 	_, ok := any(fo.Default).(time.Time)
-	fun.Invariant(ok, "cannot set timestamp layout for non-timestamp flags")
+	fun.Invariant.OK(ok, "cannot set timestamp layout for non-timestamp flags")
 	fo.TimestampLayout = l
 	return fo
 }
@@ -116,9 +116,10 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Value:       dval,
 			Destination: any(opts.Destination).(*string),
 			Action: func(cc *cli.Context, val string) error {
-				return out.validateOnce.Do(func() error {
+				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
+				return out.validateOnce.Resolve()
 			},
 		}
 	case int:
@@ -132,9 +133,10 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Value:       dval,
 			Destination: any(opts.Destination).(*int),
 			Action: func(cc *cli.Context, val int) error {
-				return out.validateOnce.Do(func() error {
+				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
+				return out.validateOnce.Resolve()
 			},
 		}
 	case uint:
@@ -148,9 +150,10 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Value:       dval,
 			Destination: any(opts.Destination).(*uint),
 			Action: func(cc *cli.Context, val uint) error {
-				return out.validateOnce.Do(func() error {
+				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
+				return out.validateOnce.Resolve()
 			},
 		}
 	case int64:
@@ -164,9 +167,10 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Value:       dval,
 			Destination: any(opts.Destination).(*int64),
 			Action: func(cc *cli.Context, val int64) error {
-				return out.validateOnce.Do(func() error {
+				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
+				return out.validateOnce.Resolve()
 			},
 		}
 	case uint64:
@@ -180,9 +184,10 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Value:       dval,
 			Destination: any(opts.Destination).(*uint64),
 			Action: func(cc *cli.Context, val uint64) error {
-				return out.validateOnce.Do(func() error {
+				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
+				return out.validateOnce.Resolve()
 			},
 		}
 	case float64:
@@ -196,9 +201,10 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Value:       dval,
 			Destination: any(opts.Destination).(*float64),
 			Action: func(cc *cli.Context, val float64) error {
-				return out.validateOnce.Do(func() error {
+				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
+				return out.validateOnce.Resolve()
 			},
 		}
 	case bool:
@@ -212,9 +218,10 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Value:       dval,
 			Destination: any(opts.Destination).(*bool),
 			Action: func(cc *cli.Context, val bool) error {
-				return out.validateOnce.Do(func() error {
+				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
+				return out.validateOnce.Resolve()
 			},
 		}
 	case time.Time:
@@ -232,10 +239,10 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Value:    cli.NewTimestamp(dval),
 			Layout:   opts.TimestampLayout,
 			Action: func(cc *cli.Context, val *time.Time) error {
-				return out.validateOnce.Do(func() error {
-					return opts.doValidate(any(*val).(T))
+				out.validateOnce.Do(func() error {
+					return opts.doValidate(any(val).(T))
 				})
-
+				return out.validateOnce.Resolve()
 			},
 		}
 	case time.Duration:
@@ -248,9 +255,10 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Hidden:   opts.Hidden,
 			Value:    dval,
 			Action: func(cc *cli.Context, val time.Duration) error {
-				return out.validateOnce.Do(func() error {
+				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
+				return out.validateOnce.Resolve()
 			},
 		}
 	case []string:
@@ -262,13 +270,14 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Required: opts.Required,
 			Hidden:   opts.Hidden,
 			Action: func(cc *cli.Context, val []string) error {
-				return out.validateOnce.Do(func() error {
+				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
+				return out.validateOnce.Resolve()
 			},
 		}
-		fun.Invariant(len(dval) == 0, "slice flags should not have default values")
-		fun.Invariant(opts.Destination == nil, "cannot specify destination for slice values")
+		fun.Invariant.OK(len(dval) == 0, "slice flags should not have default values")
+		fun.Invariant.OK(opts.Destination == nil, "cannot specify destination for slice values")
 
 		out.value = o
 	case []int:
@@ -280,13 +289,14 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Required: opts.Required,
 			Hidden:   opts.Hidden,
 			Action: func(cc *cli.Context, val []int) error {
-				return out.validateOnce.Do(func() error {
+				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
+				return out.validateOnce.Resolve()
 			},
 		}
-		fun.Invariant(len(dval) == 0, "slice flags should not have default values")
-		fun.Invariant(opts.Destination == nil, "cannot specify destination for slice values")
+		fun.Invariant.OK(len(dval) == 0, "slice flags should not have default values")
+		fun.Invariant.OK(opts.Destination == nil, "cannot specify destination for slice values")
 	case []int64:
 		out.value = &cli.Int64SliceFlag{
 			Name:     opts.Name,
@@ -296,14 +306,15 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Required: opts.Required,
 			Hidden:   opts.Hidden,
 			Action: func(cc *cli.Context, val []int64) error {
-				return out.validateOnce.Do(func() error {
+				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
+				return out.validateOnce.Resolve()
 			},
 		}
 
-		fun.Invariant(len(dval) == 0, "slice flags should not have default values")
-		fun.Invariant(opts.Destination == nil, "cannot specify destination for slice values")
+		fun.Invariant.OK(len(dval) == 0, "slice flags should not have default values")
+		fun.Invariant.OK(opts.Destination == nil, "cannot specify destination for slice values")
 	}
 
 	return out
@@ -317,7 +328,7 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 func GetFlag[T FlagTypes](cc *cli.Context, name string) T {
 	var out T
 
-	switch any(fun.ZeroOf[T]()).(type) {
+	switch any(out).(type) {
 	case string:
 		out = any(cc.String(name)).(T)
 	case int:

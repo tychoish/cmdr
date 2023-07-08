@@ -109,16 +109,16 @@ func AddOperationSpec[T any](c *Commander, s *OperationSpec[T]) *Commander { ret
 // you can use these composite hooks to process and validate
 // incrementally.
 func CompositeHook[T any](constr Hook[T], ops ...Operation[T]) Hook[T] {
-	var out T
-	return func(ctx context.Context, cc *cli.Context) (_ T, err error) {
+	var zero T
+	return func(ctx context.Context, cc *cli.Context) (out T, err error) {
 		out, err = constr(ctx, cc)
 		if err != nil {
-			return fun.ZeroOf[T](), err
+			return zero, err
 		}
 
 		for idx := range ops {
 			if err := ops[idx](ctx, out); err != nil {
-				return fun.ZeroOf[T](), err
+				return zero, err
 			}
 		}
 		return out, nil
@@ -172,7 +172,7 @@ type CommandOptions[T any] struct {
 func (opts CommandOptions[T]) Add(c *Commander) {
 	c.name.Set(opts.Name)
 
-	fun.Invariant(opts.Operation != nil, "operation must not be nil")
+	fun.Invariant.OK(opts.Operation != nil, "operation must not be nil")
 	c.name.Set(opts.Name)
 	c.usage.Set(opts.Usage)
 	c.hidden.Store(opts.Hidden)
