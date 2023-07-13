@@ -12,7 +12,7 @@ import (
 // FlagTypes defines the limited set of types which are supported by
 // the flag parsing system.
 type FlagTypes interface {
-	string | int | uint | int64 | uint64 | float64 | bool | time.Time | time.Duration | []string | []int | []int64
+	string | int | uint | int64 | uint64 | float64 | bool | *time.Time | time.Duration | []string | []int | []int64
 }
 
 // FlagOptions provide a generic way to generate a flag
@@ -66,9 +66,12 @@ func (fo *FlagOptions[T]) AddAliases(a ...string) *FlagOptions[T] {
 }
 
 func (fo *FlagOptions[T]) SetTimestmapLayout(l string) *FlagOptions[T] {
-	_, ok := any(fo.Default).(time.Time)
-	fun.Invariant.OK(ok, "cannot set timestamp layout for non-timestamp flags")
-	fo.TimestampLayout = l
+	switch any(fo.Default).(type) {
+	case time.Time, *time.Time:
+		fo.TimestampLayout = l
+	default:
+		fun.Invariant.OK(false, "cannot set timestamp layout for non-timestamp flags")
+	}
 	return fo
 }
 
@@ -224,11 +227,13 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 				return out.validateOnce.Resolve()
 			},
 		}
-	case time.Time:
+	case *time.Time:
 		if opts.TimestampLayout == "" {
 			opts.TimestampLayout = time.RFC3339
 		}
-
+		if dval == nil {
+			dval = &time.Time{}
+		}
 		out.value = &cli.TimestampFlag{
 			Name:     opts.Name,
 			Aliases:  opts.Aliases,
@@ -236,7 +241,7 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			FilePath: opts.FilePath,
 			Required: opts.Required,
 			Hidden:   opts.Hidden,
-			Value:    cli.NewTimestamp(dval),
+			Value:    cli.NewTimestamp(*dval),
 			Layout:   opts.TimestampLayout,
 			Action: func(cc *cli.Context, val *time.Time) error {
 				out.validateOnce.Do(func() error {
@@ -343,8 +348,8 @@ func GetFlag[T FlagTypes](cc *cli.Context, name string) T {
 		out = any(cc.Float64(name)).(T)
 	case bool:
 		out = any(cc.Bool(name)).(T)
-	case time.Time:
-		out = any(*cc.Timestamp(name)).(T)
+	case *time.Time:
+		out = any(cc.Timestamp(name)).(T)
 	case time.Duration:
 		out = any(cc.Duration(name)).(T)
 	case []string:

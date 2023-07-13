@@ -2,12 +2,8 @@ github.com/cpuguy83/go-md2man/v2 v2.0.2 h1:p1EgwI/C7NhT0JmVkwCD2ZBK8j4aeHQX2pMHH
 github.com/cpuguy83/go-md2man/v2 v2.0.2/go.mod h1:tgQtvFlXSQOSOSIRvRPT7W67SCa46tRHOmNcaadrF8o=
 github.com/russross/blackfriday/v2 v2.1.0 h1:JIOH55/0cWyOuilr9/qlrm0BSXldqnqwMsf35Ld67mk=
 github.com/russross/blackfriday/v2 v2.1.0/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
-github.com/tychoish/fun v0.9.4 h1:4cShoqHpD+9VCUX4dUnhxyEaYs79f/RMiENDLHHFnfI=
-github.com/tychoish/fun v0.9.4/go.mod h1:84A+BwGecz23UotmbB4mtvVS5ZcsZpspecduxpwF/XM=
 github.com/tychoish/fun v0.10.0 h1:RT2Do5euyJqZls25NfnRxDaHJCARnP4p95e7Zwl9HyM=
 github.com/tychoish/fun v0.10.0/go.mod h1:ZZfrwtsnHHV81ecZCBPp57DjjYY9Io39JH2QSXNpKn4=
-github.com/tychoish/grip v0.3.3 h1:IyOkGJ95BpCVGiNCeCveOPSsC95KJRmJjMREl0QBOHc=
-github.com/tychoish/grip v0.3.3/go.mod h1:G54kSTvvUnYksPYrrrep+yXI/a0O2yGk4ia1/V6iSo4=
 github.com/tychoish/grip v0.3.4 h1:L50E1q6WvUssZITxudh+z7S7il9tifYf1wNXgx9ziRo=
 github.com/tychoish/grip v0.3.4/go.mod h1:uIWUQlfPGQXpvXVuZUsXFtqLNcudOGiflUOYOcg6hCY=
 github.com/urfave/cli/v2 v2.25.3 h1:VJkt6wvEBOoSjPFQvOkv6iWIrsJyCrKGtCtxXWwmGeY=

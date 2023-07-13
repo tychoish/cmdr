@@ -11,30 +11,30 @@ import (
 	"github.com/tychoish/fun/adt"
 	"github.com/tychoish/fun/assert"
 	"github.com/tychoish/fun/assert/check"
-	"github.com/tychoish/fun/seq"
+	"github.com/tychoish/fun/dt"
 	"github.com/tychoish/fun/srv"
 )
 
 func (c *Commander) numFlags() int {
 	var o int
-	c.flags.With(func(i *seq.List[Flag]) { o = i.Len() })
+	c.flags.With(func(i *dt.List[Flag]) { o = i.Len() })
 	return o
 }
 
 func (c *Commander) numHooks() int {
 	var o int
-	c.hook.With(func(i *seq.List[Action]) { o = i.Len() })
+	c.hook.With(func(i *dt.List[Action]) { o = i.Len() })
 	return o
 }
 func (c *Commander) numMiddleware() int {
 	var o int
-	c.middleware.With(func(i *seq.List[Middleware]) { o = i.Len() })
+	c.middleware.With(func(i *dt.List[Middleware]) { o = i.Len() })
 	return o
 }
 
 func (c *Commander) numSubcommands() int {
 	var o int
-	c.subcmds.With(func(i *seq.List[*Commander]) { o = i.Len() })
+	c.subcmds.With(func(i *dt.List[*Commander]) { o = i.Len() })
 	return o
 }
 
@@ -423,9 +423,21 @@ func TestCommander(t *testing.T) {
 		})
 	})
 	t.Run("OperationNotDefined", func(t *testing.T) {
-		cmd := MakeCommander()
-		err := Run(ctx, cmd, []string{t.Name()})
-		assert.ErrorIs(t, err, ErrNotDefined)
+		t.Run("Empty", func(t *testing.T) {
+			cmd := MakeCommander()
+			err := Run(ctx, cmd, []string{t.Name()})
+			assert.ErrorIs(t, err, ErrNotDefined)
+		})
+		t.Run("NonEmpty", func(t *testing.T) {
+			cmd := MakeCommander().Subcommanders(MakeCommander().SetName("hi"))
+			err := Run(ctx, cmd, []string{t.Name()})
+			assert.ErrorIs(t, err, ErrNotSpecified)
+		})
+		t.Run("Incorrect", func(t *testing.T) {
+			cmd := MakeCommander().Subcommanders(MakeCommander().SetName("hi"))
+			err := Run(ctx, cmd, []string{"hi", t.Name()})
+			assert.ErrorIs(t, err, ErrNotDefined)
+		})
 	})
 	t.Run("ResolutionIsIdempotent", func(t *testing.T) {
 		cmd := MakeRootCommander()

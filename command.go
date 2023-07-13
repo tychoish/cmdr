@@ -132,6 +132,7 @@ func MakeCommander() *Commander {
 			ec.Add(flags.Iterator().Observe(c.getContext(), func(fl Flag) {
 				if af, ok := fl.value.(cli.ActionableFlag); ok {
 					ec.Add(af.RunAction(cc))
+
 				}
 			}))
 		})
