@@ -262,53 +262,38 @@ func TestFlags(t *testing.T) {
 			check.NotError(t, Run(ctx, cmd, []string{t.Name()}))
 			assert.True(t, called)
 		})
-		t.Run("TimestmapPtr", func(t *testing.T) {
-			called := false
-			now := time.Now().Truncate(time.Minute)
-			cmd := MakeCommander().
-				Flags(FlagBuilder(&now).SetName("world", "fire").
-					SetTimestmapLayout(time.RFC822).
-					Flag(),
-				).
-				SetAction(func(_ context.Context, cc *cli.Context) error {
-					check.Equal(t, *cc.Timestamp("world"), now.Add(time.Hour))
-					check.Equal(t, *GetFlag[*time.Time](cc, "world"), now.Add(time.Hour))
-					called = true
-					return nil
-				})
-			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--fire", now.Add(time.Hour).Format(time.RFC822)}))
-			assert.True(t, called)
-		})
-		t.Run("Timestmap", func(t *testing.T) {
-			counter := 0
-			epoch := time.Unix(0, 0)
-			flag := MakeFlag[*time.Time](&FlagOptions[*time.Time]{Name: "hello"})
-			check.Equal(t, "hello", flag.value.Names()[0])
-			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
-				counter++
-				check.Equal(t, epoch, *cc.Timestamp("hello"))
-				check.Equal(t, epoch, *GetFlag[*time.Time](cc, "hello"))
-				return nil
+		t.Run("Timestamp", func(t *testing.T) {
+			t.Run("Current", func(t *testing.T) {
+				called := false
+				now := time.Now().Truncate(time.Minute)
+				cmd := MakeCommander().
+					Flags(FlagBuilder(&now).SetName("world", "fire").
+						SetTimestmapLayout(time.RFC822).
+						Flag(),
+					).
+					SetAction(func(_ context.Context, cc *cli.Context) error {
+						check.True(t, cc.Timestamp("world").Equal(now.Add(time.Hour)))
+						check.True(t, GetFlag[*time.Time](cc, "world").Equal(now.Add(time.Hour)))
+						called = true
+						return nil
+					})
+				assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--fire", now.Add(time.Hour).Format(time.RFC822)}))
+				assert.True(t, called)
 			})
-			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", epoch.Format(time.RFC3339)}))
-			assert.Equal(t, 1, counter)
-		})
-		t.Run("Timestmap", func(t *testing.T) {
-			called := false
-			now := time.Now().Truncate(time.Minute)
-			cmd := MakeCommander().
-				Flags(FlagBuilder(&now).SetName("world", "fire").
-					SetTimestmapLayout(time.RFC822).
-					Flag(),
-				).
-				SetAction(func(_ context.Context, cc *cli.Context) error {
-					check.Equal(t, *cc.Timestamp("world"), now.Add(time.Hour))
-					check.Equal(t, *GetFlag[*time.Time](cc, "world"), now.Add(time.Hour))
-					called = true
+			t.Run("UnixTimeEpoch", func(t *testing.T) {
+				counter := 0
+				epoch := time.Unix(0, 0)
+				flag := MakeFlag[*time.Time](&FlagOptions[*time.Time]{Name: "hello"})
+				check.Equal(t, "hello", flag.value.Names()[0])
+				cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
+					counter++
+					check.Equal(t, epoch, *cc.Timestamp("hello"))
+					check.Equal(t, epoch, *GetFlag[*time.Time](cc, "hello"))
 					return nil
 				})
-			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--fire", now.Add(time.Hour).Format(time.RFC822)}))
-			assert.True(t, called)
+				assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", epoch.Format(time.RFC3339)}))
+				assert.Equal(t, 1, counter)
+			})
 		})
 		t.Run("Options", func(t *testing.T) {
 			count := 0
