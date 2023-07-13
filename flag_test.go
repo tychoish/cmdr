@@ -287,8 +287,8 @@ func TestFlags(t *testing.T) {
 				check.Equal(t, "hello", flag.value.Names()[0])
 				cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
 					counter++
-					check.Equal(t, epoch, *cc.Timestamp("hello"))
-					check.Equal(t, epoch, *GetFlag[*time.Time](cc, "hello"))
+					check.True(t, cc.Timestamp("hello").Equal(epoch))
+					check.True(t, GetFlag[*time.Time](cc, "hello").Equal(epoch))
 					return nil
 				})
 				assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", epoch.Format(time.RFC3339)}))
