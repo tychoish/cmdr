@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/tychoish/fun v0.10.4
-	github.com/tychoish/grip v0.3.6-0.20230824232221-fd39190c3be1
+	github.com/tychoish/grip v0.3.6
 	github.com/urfave/cli/v2 v2.25.3
 )
 
