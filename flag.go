@@ -67,7 +67,7 @@ func (fo *FlagOptions[T]) AddAliases(a ...string) *FlagOptions[T] {
 
 func (fo *FlagOptions[T]) SetTimestmapLayout(l string) *FlagOptions[T] {
 	switch any(fo.Default).(type) {
-	case time.Time, *time.Time:
+	case *time.Time:
 		fo.TimestampLayout = l
 	default:
 		fun.Invariant.OK(false, "cannot set timestamp layout for non-timestamp flags")

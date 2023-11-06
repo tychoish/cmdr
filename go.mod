@@ -3,8 +3,8 @@ module github.com/tychoish/cmdr
 go 1.20
 
 require (
-	github.com/tychoish/fun v0.10.4
-	github.com/tychoish/grip v0.3.6
+	github.com/tychoish/fun v0.10.8
+	github.com/tychoish/grip v0.3.7
 	github.com/urfave/cli/v2 v2.25.3
 )
 
