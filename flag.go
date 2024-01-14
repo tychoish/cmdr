@@ -70,7 +70,7 @@ func (fo *FlagOptions[T]) SetTimestmapLayout(l string) *FlagOptions[T] {
 	case *time.Time:
 		fo.TimestampLayout = l
 	default:
-		fun.Invariant.OK(false, "cannot set timestamp layout for non-timestamp flags")
+		fun.Invariant.Ok(false, "cannot set timestamp layout for non-timestamp flags")
 	}
 	return fo
 }
@@ -281,8 +281,8 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 				return out.validateOnce.Resolve()
 			},
 		}
-		fun.Invariant.OK(len(dval) == 0, "slice flags should not have default values")
-		fun.Invariant.OK(opts.Destination == nil, "cannot specify destination for slice values")
+		fun.Invariant.Ok(len(dval) == 0, "slice flags should not have default values")
+		fun.Invariant.Ok(opts.Destination == nil, "cannot specify destination for slice values")
 
 		out.value = o
 	case []int:
@@ -300,8 +300,8 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 				return out.validateOnce.Resolve()
 			},
 		}
-		fun.Invariant.OK(len(dval) == 0, "slice flags should not have default values")
-		fun.Invariant.OK(opts.Destination == nil, "cannot specify destination for slice values")
+		fun.Invariant.Ok(len(dval) == 0, "slice flags should not have default values")
+		fun.Invariant.Ok(opts.Destination == nil, "cannot specify destination for slice values")
 	case []int64:
 		out.value = &cli.Int64SliceFlag{
 			Name:     opts.Name,
@@ -318,8 +318,8 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			},
 		}
 
-		fun.Invariant.OK(len(dval) == 0, "slice flags should not have default values")
-		fun.Invariant.OK(opts.Destination == nil, "cannot specify destination for slice values")
+		fun.Invariant.Ok(len(dval) == 0, "slice flags should not have default values")
+		fun.Invariant.Ok(opts.Destination == nil, "cannot specify destination for slice values")
 	}
 
 	return out

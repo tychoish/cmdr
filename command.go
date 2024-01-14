@@ -250,7 +250,7 @@ func (c *Commander) With(op func(c *Commander)) *Commander { op(c); return c }
 // the commander.
 func (c *Commander) Command() *cli.Command {
 	c.once.Do(func() {
-		fun.Invariant.OK(c.getContext() != nil, "context must be set when calling command")
+		fun.Invariant.Ok(c.getContext() != nil, "context must be set when calling command")
 
 		c.cmd.Name = secondValueWhenFirstIsZero(c.cmd.Name, c.name.Get())
 		c.cmd.Usage = secondValueWhenFirstIsZero(c.cmd.Usage, c.usage.Get())
@@ -301,7 +301,7 @@ func (c *Commander) SetAppOptions(opts AppOptions) *Commander { c.opts.Set(opts)
 // App() to use the commander, and Run()/Main() provide their own
 // contexts.
 func (c *Commander) App() *cli.App {
-	fun.Invariant.OK(c.ctx.Get() != nil, "context must be set before calling the app")
+	fun.Invariant.Ok(c.ctx.Get() != nil, "context must be set before calling the app")
 	a := c.opts.Get()
 
 	cmd := c.Command()

@@ -172,7 +172,7 @@ type CommandOptions[T any] struct {
 func (opts CommandOptions[T]) Add(c *Commander) {
 	c.name.Set(opts.Name)
 
-	fun.Invariant.OK(opts.Operation != nil, "operation must not be nil")
+	fun.Invariant.Ok(opts.Operation != nil, "operation must not be nil")
 	c.name.Set(opts.Name)
 	c.usage.Set(opts.Usage)
 	c.hidden.Store(opts.Hidden)
