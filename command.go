@@ -14,8 +14,6 @@ import (
 	"github.com/tychoish/fun/adt"
 	"github.com/tychoish/fun/dt"
 	"github.com/tychoish/fun/erc"
-	"github.com/tychoish/fun/ers"
-	"github.com/tychoish/fun/ft"
 	"github.com/tychoish/fun/srv"
 )
 
@@ -122,15 +120,15 @@ func MakeCommander() *Commander {
 		ec := &erc.Collector{}
 
 		c.hook.With(func(hooks *dt.List[Action]) {
-			ec.Add(hooks.Iterator().Observe(func(op Action) { ec.Add(op(c.getContext(), cc)) }).Run(c.getContext()))
+			ec.Add(hooks.StreamFront().ReadAll(func(op Action) { ec.Add(op(c.getContext(), cc)) }).Run(c.getContext()))
 		})
 
 		c.middleware.With(func(in *dt.List[Middleware]) {
-			ec.Add(in.Iterator().Observe(func(mw Middleware) { c.setContext(mw(c.getContext())) }).Run(c.getContext()))
+			ec.Add(in.StreamFront().ReadAll(func(mw Middleware) { c.setContext(mw(c.getContext())) }).Run(c.getContext()))
 		})
 
 		c.flags.With(func(flags *dt.List[Flag]) {
-			ec.Add(flags.Iterator().Observe(func(fl Flag) {
+			ec.Add(flags.StreamFront().ReadAll(func(fl Flag) {
 				if af, ok := fl.value.(cli.ActionableFlag); ok {
 					ec.Add(af.RunAction(cc))
 
@@ -153,10 +151,10 @@ func MakeCommander() *Commander {
 		}
 
 		if cc.Args().Len() == 0 {
-			return ers.Join(cli.ShowAppHelp(cc), fmt.Errorf("no operation for %q: %w", c.cmd.Name, ErrNotSpecified))
+			return erc.Join(cli.ShowAppHelp(cc), fmt.Errorf("no operation for %q: %w", c.cmd.Name, ErrNotSpecified))
 		}
 
-		return ers.Join(cli.ShowCommandHelp(cc, c.cmd.Name), fmt.Errorf("command %v: %w", cc.Args().Len(), ErrNotDefined))
+		return erc.Join(cli.ShowCommandHelp(cc, c.cmd.Name), fmt.Errorf("command %v: %w", cc.Args().Len(), ErrNotDefined))
 	}
 
 	return c
@@ -259,19 +257,19 @@ func (c *Commander) Command() *cli.Command {
 		if len(c.cmd.Aliases) == 0 {
 			var aliases []string
 			c.aliases.With(func(in *dt.List[string]) {
-				aliases = ft.Must(in.Iterator().Slice(c.getContext()))
+				aliases = in.Slice()
 			})
 			c.cmd.Aliases = aliases
 		}
 
 		c.flags.With(func(in *dt.List[Flag]) {
-			fun.Invariant.Must(in.Iterator().Observe(func(v Flag) {
+			fun.Invariant.Must(in.StreamFront().ReadAll(func(v Flag) {
 				c.cmd.Flags = append(c.cmd.Flags, v.value)
 			}).Run(c.getContext()))
 		})
 
 		c.subcmds.With(func(in *dt.List[*Commander]) {
-			fun.Invariant.Must(in.Iterator().Observe(func(v *Commander) {
+			fun.Invariant.Must(in.StreamFront().ReadAll(func(v *Commander) {
 				v.ctx = c.ctx
 				c.cmd.Subcommands = append(c.cmd.Subcommands, v.Command())
 			}).Run(c.getContext()))

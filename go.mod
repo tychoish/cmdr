@@ -1,10 +1,10 @@
 module github.com/tychoish/cmdr
 
-go 1.20
+go 1.24
 
 require (
-	github.com/tychoish/fun v0.10.9
-	github.com/tychoish/grip v0.3.8
+	github.com/tychoish/fun v0.12.0
+	github.com/tychoish/grip v0.4.0
 	github.com/urfave/cli/v2 v2.25.3
 )
 
