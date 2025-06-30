@@ -27,6 +27,7 @@ type FlagOptions[T FlagTypes] struct {
 	Hidden    bool
 	TakesFile bool
 	Validate  func(T) error
+	EnvVars   []string
 
 	TimestampLayout string
 
@@ -77,6 +78,7 @@ func (fo *FlagOptions[T]) SetTimestmapLayout(l string) *FlagOptions[T] {
 
 func (fo *FlagOptions[T]) SetAliases(a []string) *FlagOptions[T]       { fo.Aliases = a; return fo }
 func (fo *FlagOptions[T]) SetUsage(s string) *FlagOptions[T]           { fo.Usage = s; return fo }
+func (fo *FlagOptions[T]) SetEnvVars(s ...string) *FlagOptions[T]      { fo.EnvVars = s; return fo }
 func (fo *FlagOptions[T]) SetFilePath(s string) *FlagOptions[T]        { fo.FilePath = s; return fo }
 func (fo *FlagOptions[T]) SetRequired(b bool) *FlagOptions[T]          { fo.Required = b; return fo }
 func (fo *FlagOptions[T]) SetHidden(b bool) *FlagOptions[T]            { fo.Hidden = b; return fo }
@@ -116,6 +118,7 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			FilePath:    opts.FilePath,
 			Required:    opts.Required,
 			Hidden:      opts.Hidden,
+			EnvVars:     opts.EnvVars,
 			Value:       dval,
 			Destination: any(opts.Destination).(*string),
 			Action: func(cc *cli.Context, val string) error {
@@ -133,6 +136,7 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			FilePath:    opts.FilePath,
 			Required:    opts.Required,
 			Hidden:      opts.Hidden,
+			EnvVars:     opts.EnvVars,
 			Value:       dval,
 			Destination: any(opts.Destination).(*int),
 			Action: func(cc *cli.Context, val int) error {
@@ -150,6 +154,7 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			FilePath:    opts.FilePath,
 			Required:    opts.Required,
 			Hidden:      opts.Hidden,
+			EnvVars:     opts.EnvVars,
 			Value:       dval,
 			Destination: any(opts.Destination).(*uint),
 			Action: func(cc *cli.Context, val uint) error {
@@ -167,6 +172,7 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			FilePath:    opts.FilePath,
 			Required:    opts.Required,
 			Hidden:      opts.Hidden,
+			EnvVars:     opts.EnvVars,
 			Value:       dval,
 			Destination: any(opts.Destination).(*int64),
 			Action: func(cc *cli.Context, val int64) error {
@@ -201,6 +207,7 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			FilePath:    opts.FilePath,
 			Required:    opts.Required,
 			Hidden:      opts.Hidden,
+			EnvVars:     opts.EnvVars,
 			Value:       dval,
 			Destination: any(opts.Destination).(*float64),
 			Action: func(cc *cli.Context, val float64) error {
@@ -218,6 +225,7 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			FilePath:    opts.FilePath,
 			Required:    opts.Required,
 			Hidden:      opts.Hidden,
+			EnvVars:     opts.EnvVars,
 			Value:       dval,
 			Destination: any(opts.Destination).(*bool),
 			Action: func(cc *cli.Context, val bool) error {
@@ -242,6 +250,7 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Required: opts.Required,
 			Hidden:   opts.Hidden,
 			Value:    cli.NewTimestamp(*dval),
+			EnvVars:  opts.EnvVars,
 			Layout:   opts.TimestampLayout,
 			Action: func(cc *cli.Context, val *time.Time) error {
 				out.validateOnce.Do(func() error {
@@ -257,6 +266,7 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Usage:    opts.Usage,
 			FilePath: opts.FilePath,
 			Required: opts.Required,
+			EnvVars:  opts.EnvVars,
 			Hidden:   opts.Hidden,
 			Value:    dval,
 			Action: func(cc *cli.Context, val time.Duration) error {
@@ -274,6 +284,7 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			FilePath: opts.FilePath,
 			Required: opts.Required,
 			Hidden:   opts.Hidden,
+			EnvVars:  opts.EnvVars,
 			Action: func(cc *cli.Context, val []string) error {
 				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
@@ -293,6 +304,7 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			FilePath: opts.FilePath,
 			Required: opts.Required,
 			Hidden:   opts.Hidden,
+			EnvVars:  opts.EnvVars,
 			Action: func(cc *cli.Context, val []int) error {
 				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
@@ -309,6 +321,7 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Usage:    opts.Usage,
 			FilePath: opts.FilePath,
 			Required: opts.Required,
+			EnvVars:  opts.EnvVars,
 			Hidden:   opts.Hidden,
 			Action: func(cc *cli.Context, val []int64) error {
 				out.validateOnce.Do(func() error {

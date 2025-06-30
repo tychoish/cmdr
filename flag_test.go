@@ -304,6 +304,7 @@ func TestFlags(t *testing.T) {
 					SetUsage("checked value").
 					SetFilePath("/tmp/conf").
 					SetRequired(false).
+					SetEnvVars("ENV_VAR").
 					SetHidden(false).
 					SetTakesFile(false).
 					SetDefault("beep").
