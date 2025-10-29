@@ -14,6 +14,7 @@ import (
 	"github.com/tychoish/fun/adt"
 	"github.com/tychoish/fun/dt"
 	"github.com/tychoish/fun/erc"
+	"github.com/tychoish/fun/fnx"
 	"github.com/tychoish/fun/srv"
 )
 
@@ -114,26 +115,26 @@ func MakeCommander() *Commander {
 	c.hook.Set(&dt.List[Action]{})
 	c.subcmds.Set(&dt.List[*Commander]{})
 	c.middleware.Set(&dt.List[Middleware]{})
+
 	c.aliases.Set(&dt.List[string]{})
 
 	c.cmd.Before = func(cc *cli.Context) error {
 		ec := &erc.Collector{}
 
 		c.hook.With(func(hooks *dt.List[Action]) {
-			ec.Add(hooks.StreamFront().ReadAll(func(op Action) { ec.Add(op(c.getContext(), cc)) }).Run(c.getContext()))
+			ec.Push(hooks.StreamFront().ReadAll(fnx.FromHandler(func(op Action) { ec.Push(op(c.getContext(), cc)) })).Run(c.getContext()))
 		})
 
 		c.middleware.With(func(in *dt.List[Middleware]) {
-			ec.Add(in.StreamFront().ReadAll(func(mw Middleware) { c.setContext(mw(c.getContext())) }).Run(c.getContext()))
+			ec.Push(in.StreamFront().ReadAll(fnx.FromHandler(func(mw Middleware) { c.setContext(mw(c.getContext())) })).Run(c.getContext()))
 		})
 
 		c.flags.With(func(flags *dt.List[Flag]) {
-			ec.Add(flags.StreamFront().ReadAll(func(fl Flag) {
+			ec.Push(flags.StreamFront().ReadAll(fnx.FromHandler(func(fl Flag) {
 				if af, ok := fl.value.(cli.ActionableFlag); ok {
-					ec.Add(af.RunAction(cc))
-
+					ec.Push(af.RunAction(cc))
 				}
-			}).Run(c.getContext()))
+			})).Run(c.getContext()))
 		})
 
 		return ec.Resolve()
@@ -263,16 +264,16 @@ func (c *Commander) Command() *cli.Command {
 		}
 
 		c.flags.With(func(in *dt.List[Flag]) {
-			fun.Invariant.Must(in.StreamFront().ReadAll(func(v Flag) {
+			fun.Invariant.Must(in.StreamFront().ReadAll(fnx.FromHandler(func(v Flag) {
 				c.cmd.Flags = append(c.cmd.Flags, v.value)
-			}).Run(c.getContext()))
+			})).Run(c.getContext()))
 		})
 
 		c.subcmds.With(func(in *dt.List[*Commander]) {
-			fun.Invariant.Must(in.StreamFront().ReadAll(func(v *Commander) {
+			fun.Invariant.Must(in.StreamFront().ReadAll(fnx.FromHandler(func(v *Commander) {
 				v.ctx = c.ctx
 				c.cmd.Subcommands = append(c.cmd.Subcommands, v.Command())
-			}).Run(c.getContext()))
+			})).Run(c.getContext()))
 		})
 	})
 
