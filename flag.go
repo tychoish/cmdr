@@ -1,6 +1,7 @@
 package cmdr
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/urfave/cli/v2"
@@ -374,4 +375,58 @@ func GetFlag[T FlagTypes](cc *cli.Context, name string) T {
 	}
 
 	return out
+}
+
+func GetFlagOrFirstArg[T FlagTypes](cc *cli.Context, name string) (zero T) {
+	arg := GetFlag[T](cc, name)
+
+	if !cc.IsSet(name) {
+		switch any(zero).(type) {
+		case int:
+			val, err := strconv.ParseInt(cc.Args().First(), 0, 64)
+			if err == nil {
+				arg = any(int(any(val).(int64))).(T)
+			}
+		case int64:
+			val, err := strconv.ParseInt(cc.Args().First(), 0, 64)
+			if err == nil {
+				arg = any(val).(T)
+			}
+		case uint:
+			val, err := strconv.ParseUint(cc.Args().First(), 0, 64)
+			if err == nil {
+				arg = any(uint(any(val).(uint64))).(T)
+			}
+		case uint64:
+			val, err := strconv.ParseUint(cc.Args().First(), 0, 64)
+			if err == nil {
+				arg = any(val).(T)
+			}
+		case float64:
+			val, err := strconv.ParseFloat(cc.Args().First(), 64)
+			if err == nil {
+				arg = any(val).(T)
+			}
+		case string:
+			arg = any(cc.Args().First()).(T)
+		case []string:
+			arg = any(append(any(arg).([]string), cc.Args().Slice()...)).(T)
+		case []int:
+			for _, it := range cc.Args().Slice() {
+				val, err := strconv.ParseInt(it, 0, 64)
+				if err == nil {
+					arg = any(append(any(val).([]int), int(any(arg).(int64)))).(T)
+				}
+			}
+		case []int64:
+			for _, it := range cc.Args().Slice() {
+				val, err := strconv.ParseInt(it, 0, 64)
+				if err == nil {
+					arg = any(append(any(val).([]int64), any(val).(int64))).(T)
+				}
+			}
+		}
+	}
+
+	return arg
 }
