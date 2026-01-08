@@ -10,11 +10,10 @@ import (
 
 	"github.com/urfave/cli/v2"
 
-	"github.com/tychoish/fun"
 	"github.com/tychoish/fun/adt"
 	"github.com/tychoish/fun/dt"
 	"github.com/tychoish/fun/erc"
-	"github.com/tychoish/fun/fnx"
+	"github.com/tychoish/fun/irt"
 	"github.com/tychoish/fun/srv"
 )
 
@@ -122,19 +121,23 @@ func MakeCommander() *Commander {
 		ec := &erc.Collector{}
 
 		c.hook.With(func(hooks *dt.List[Action]) {
-			ec.Push(hooks.StreamFront().ReadAll(fnx.FromHandler(func(op Action) { ec.Push(op(c.getContext(), cc)) })).Run(c.getContext()))
+			for op := range hooks.IteratorFront() {
+				ec.Push(op(c.getContext(), cc))
+			}
 		})
 
 		c.middleware.With(func(in *dt.List[Middleware]) {
-			ec.Push(in.StreamFront().ReadAll(fnx.FromHandler(func(mw Middleware) { c.setContext(mw(c.getContext())) })).Run(c.getContext()))
+			for op := range in.IteratorFront() {
+				c.setContext(op(c.getContext()))
+			}
 		})
 
 		c.flags.With(func(flags *dt.List[Flag]) {
-			ec.Push(flags.StreamFront().ReadAll(fnx.FromHandler(func(fl Flag) {
-				if af, ok := fl.value.(cli.ActionableFlag); ok {
+			for flag := range flags.IteratorFront() {
+				if af, ok := flag.value.(cli.ActionableFlag); ok {
 					ec.Push(af.RunAction(cc))
 				}
-			})).Run(c.getContext()))
+			}
 		})
 
 		return ec.Resolve()
@@ -249,7 +252,7 @@ func (c *Commander) With(op func(c *Commander)) *Commander { op(c); return c }
 // the commander.
 func (c *Commander) Command() *cli.Command {
 	c.once.Do(func() {
-		fun.Invariant.Ok(c.getContext() != nil, "context must be set when calling command")
+		erc.InvariantOk(c.getContext() != nil, "context must be set when calling command")
 
 		c.cmd.Name = secondValueWhenFirstIsZero(c.cmd.Name, c.name.Get())
 		c.cmd.Usage = secondValueWhenFirstIsZero(c.cmd.Usage, c.usage.Get())
@@ -258,22 +261,22 @@ func (c *Commander) Command() *cli.Command {
 		if len(c.cmd.Aliases) == 0 {
 			var aliases []string
 			c.aliases.With(func(in *dt.List[string]) {
-				aliases = in.Slice()
+				aliases = irt.Collect(in.IteratorFront())
 			})
 			c.cmd.Aliases = aliases
 		}
 
 		c.flags.With(func(in *dt.List[Flag]) {
-			fun.Invariant.Must(in.StreamFront().ReadAll(fnx.FromHandler(func(v Flag) {
+			for v := range in.IteratorFront() {
 				c.cmd.Flags = append(c.cmd.Flags, v.value)
-			})).Run(c.getContext()))
+			}
 		})
 
 		c.subcmds.With(func(in *dt.List[*Commander]) {
-			fun.Invariant.Must(in.StreamFront().ReadAll(fnx.FromHandler(func(v *Commander) {
+			for v := range in.IteratorFront() {
 				v.ctx = c.ctx
 				c.cmd.Subcommands = append(c.cmd.Subcommands, v.Command())
-			})).Run(c.getContext()))
+			}
 		})
 	})
 
@@ -300,7 +303,7 @@ func (c *Commander) SetAppOptions(opts AppOptions) *Commander { c.opts.Set(opts)
 // App() to use the commander, and Run()/Main() provide their own
 // contexts.
 func (c *Commander) App() *cli.App {
-	fun.Invariant.Ok(c.ctx.Get() != nil, "context must be set before calling the app")
+	erc.InvariantOk(c.ctx.Get() != nil, "context must be set before calling the app")
 	a := c.opts.Get()
 
 	cmd := c.Command()

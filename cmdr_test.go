@@ -26,6 +26,7 @@ func (c *Commander) numHooks() int {
 	c.hook.With(func(i *dt.List[Action]) { o = i.Len() })
 	return o
 }
+
 func (c *Commander) numMiddleware() int {
 	var o int
 	c.middleware.With(func(i *dt.List[Middleware]) { o = i.Len() })
@@ -200,7 +201,6 @@ func TestCommander(t *testing.T) {
 				assert.True(t, cmd.action.Get() != nil)
 				assert.NotError(t, Run(ctx, cmd, []string{"comp"}))
 				assert.Equal(t, count, 4)
-
 			})
 
 			t.Run("HookErrorAborts", func(t *testing.T) {
@@ -208,11 +208,12 @@ func TestCommander(t *testing.T) {
 				cmd := MakeRootCommander()
 				AddOperationSpec(cmd, &OperationSpec[string]{
 					Constructor: func(ctx context.Context, cc *cli.Context) (string, error) { count++; return "hi", nil },
-					HookOperations: []Operation[string]{func(ctx context.Context, in string) error {
-						count++
-						check.Equal(t, in, "hi")
-						return errors.New("abort")
-					},
+					HookOperations: []Operation[string]{
+						func(ctx context.Context, in string) error {
+							count++
+							check.Equal(t, in, "hi")
+							return errors.New("abort")
+						},
 					},
 					Action: func(ctx context.Context, in string) error { count++; check.Equal(t, in, "hi"); return nil },
 				})
@@ -279,7 +280,6 @@ func TestCommander(t *testing.T) {
 				assert.NotError(t, Run(ctx, cmd, []string{"comp"}))
 				assert.Equal(t, count, 4)
 			})
-
 		})
 		t.Run("RequiredFlag", func(t *testing.T) {
 			count := 0
@@ -351,6 +351,7 @@ func TestCommander(t *testing.T) {
 						if ctx != nil {
 							t.Error("middleware did not set context")
 						}
+						panic("woop")
 						count++
 						return nil
 					}).
@@ -360,7 +361,6 @@ func TestCommander(t *testing.T) {
 				})
 
 				assert.Equal(t, count, 1)
-
 			})
 			t.Run("Succeeds", func(t *testing.T) {
 				count := 0
@@ -407,7 +407,6 @@ func TestCommander(t *testing.T) {
 				assert.NotError(t, Run(ctx, ncmd, []string{t.Name(), "sub", "--hello", "kip"}))
 				// assert.Equal(t, count, 3)
 			})
-
 		})
 		t.Run("Main", func(t *testing.T) {
 			count := 0

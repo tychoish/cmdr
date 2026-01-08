@@ -5,11 +5,10 @@ import (
 
 	"github.com/tychoish/fun/adt"
 	"github.com/tychoish/fun/dt"
-	"github.com/tychoish/fun/ft"
 )
 
-func secondValueWhenFirstIsZero[T comparable](a, b T) T {
-	if ft.IsZero(a) {
+func secondValueWhenFirstIsZero[T comparable](a, b T) (zero T) {
+	if a == zero {
 		return b
 	}
 	return a

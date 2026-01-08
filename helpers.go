@@ -3,9 +3,8 @@ package cmdr
 import (
 	"context"
 
+	"github.com/tychoish/fun/erc"
 	"github.com/urfave/cli/v2"
-
-	"github.com/tychoish/fun"
 )
 
 // Hook generates an object, typically a configuration struct, from
@@ -172,7 +171,7 @@ type CommandOptions[T any] struct {
 func (opts CommandOptions[T]) Add(c *Commander) {
 	c.name.Set(opts.Name)
 
-	fun.Invariant.Ok(opts.Operation != nil, "operation must not be nil")
+	erc.InvariantOk(opts.Operation != nil, "operation must not be nil")
 	c.name.Set(opts.Name)
 	c.usage.Set(opts.Usage)
 	c.hidden.Store(opts.Hidden)
