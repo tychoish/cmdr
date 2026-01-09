@@ -121,18 +121,21 @@ func MakeCommander() *Commander {
 		ec := &erc.Collector{}
 
 		c.hook.With(func(hooks *dt.List[Action]) {
+			defer ec.Recover()
 			for op := range hooks.IteratorFront() {
 				ec.Push(op(c.getContext(), cc))
 			}
 		})
 
 		c.middleware.With(func(in *dt.List[Middleware]) {
+			defer ec.Recover()
 			for op := range in.IteratorFront() {
 				c.setContext(op(c.getContext()))
 			}
 		})
 
 		c.flags.With(func(flags *dt.List[Flag]) {
+			defer ec.Recover()
 			for flag := range flags.IteratorFront() {
 				if af, ok := flag.value.(cli.ActionableFlag); ok {
 					ec.Push(af.RunAction(cc))
