@@ -4,13 +4,13 @@ import (
 	"context"
 
 	"github.com/tychoish/fun/erc"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 // Hook generates an object, typically a configuration struct, from
-// the cli.Context provided. Hooks are always processed first, before
+// the cli.Command provided. Hooks are always processed first, before
 // middleware and the main opreation.
-type Hook[T any] func(context.Context, *cli.Context) (T, error)
+type Hook[T any] func(context.Context, *cli.Command) (T, error)
 
 // Operation takes a value, produced by Hook[T], and executes the
 // function.
@@ -63,7 +63,7 @@ func (s *OperationSpec[T]) Hooks(hook ...Operation[T]) *OperationSpec[T] {
 // Commander.With method.
 func (s *OperationSpec[T]) Add(c *Commander) {
 	var out T
-	c.Hooks(func(ctx context.Context, cc *cli.Context) (err error) {
+	c.Hooks(func(ctx context.Context, cc *cli.Command) (err error) {
 		out, err = s.Constructor(ctx, cc)
 		if err != nil {
 			return err
@@ -84,7 +84,7 @@ func (s *OperationSpec[T]) Add(c *Commander) {
 	}
 
 	if s.Action != nil {
-		c.SetAction(func(ctx context.Context, _ *cli.Context) error {
+		c.SetAction(func(ctx context.Context, _ *cli.Command) error {
 			return s.Action(ctx, out)
 		})
 	}
@@ -109,7 +109,7 @@ func AddOperationSpec[T any](c *Commander, s *OperationSpec[T]) *Commander { ret
 // incrementally.
 func CompositeHook[T any](constr Hook[T], ops ...Operation[T]) Hook[T] {
 	var zero T
-	return func(ctx context.Context, cc *cli.Context) (out T, err error) {
+	return func(ctx context.Context, cc *cli.Command) (out T, err error) {
 		out, err = constr(ctx, cc)
 		if err != nil {
 			return zero, err

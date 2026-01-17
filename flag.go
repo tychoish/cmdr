@@ -1,19 +1,21 @@
 package cmdr
 
 import (
+	"context"
 	"strconv"
 	"time"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 
 	"github.com/tychoish/fun/adt"
 	"github.com/tychoish/fun/erc"
+	"github.com/tychoish/fun/irt"
 )
 
 // FlagTypes defines the limited set of types which are supported by
 // the flag parsing system.
 type FlagTypes interface {
-	string | int | uint | int64 | uint64 | float64 | bool | *time.Time | time.Duration | []string | []int | []int64
+	string | int | uint | int64 | uint64 | float64 | bool | time.Time | time.Duration | []string | []int | []int64
 }
 
 // FlagOptions provide a generic way to generate a flag
@@ -69,7 +71,7 @@ func (fo *FlagOptions[T]) AddAliases(a ...string) *FlagOptions[T] {
 
 func (fo *FlagOptions[T]) SetTimestmapLayout(l string) *FlagOptions[T] {
 	switch any(fo.Default).(type) {
-	case *time.Time:
+	case time.Time:
 		fo.TimestampLayout = l
 	default:
 		erc.InvariantOk(false, "cannot set timestamp layout for non-timestamp flags")
@@ -104,6 +106,18 @@ type Flag struct {
 	validateOnce *adt.Once[error]
 }
 
+// buildSources creates a ValueSource chain from FilePath and EnvVars
+func buildSources(filePath string, envVars []string) cli.ValueSourceChain {
+	var sources []cli.ValueSource
+	if len(envVars) > 0 {
+		sources = append(sources, irt.Collect(irt.Convert(irt.Slice(envVars), cli.EnvVar))...)
+	}
+	if filePath != "" {
+		sources = append(sources, cli.File(filePath))
+	}
+	return cli.NewValueSourceChain(sources...)
+}
+
 // MakeFlag builds a commandline flag instance and validation from a
 // typed flag to options to a flag object for the command
 // line.
@@ -116,13 +130,12 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Name:        opts.Name,
 			Aliases:     opts.Aliases,
 			Usage:       opts.Usage,
-			FilePath:    opts.FilePath,
+			Sources:     (buildSources(opts.FilePath, opts.EnvVars)),
 			Required:    opts.Required,
 			Hidden:      opts.Hidden,
-			EnvVars:     opts.EnvVars,
 			Value:       dval,
 			Destination: any(opts.Destination).(*string),
-			Action: func(cc *cli.Context, val string) error {
+			Action: func(ctx context.Context, cmd *cli.Command, val string) error {
 				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
@@ -134,13 +147,12 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Name:        opts.Name,
 			Aliases:     opts.Aliases,
 			Usage:       opts.Usage,
-			FilePath:    opts.FilePath,
+			Sources:     (buildSources(opts.FilePath, opts.EnvVars)),
 			Required:    opts.Required,
 			Hidden:      opts.Hidden,
-			EnvVars:     opts.EnvVars,
 			Value:       dval,
 			Destination: any(opts.Destination).(*int),
-			Action: func(cc *cli.Context, val int) error {
+			Action: func(ctx context.Context, cmd *cli.Command, val int) error {
 				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
@@ -152,13 +164,12 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Name:        opts.Name,
 			Aliases:     opts.Aliases,
 			Usage:       opts.Usage,
-			FilePath:    opts.FilePath,
+			Sources:     (buildSources(opts.FilePath, opts.EnvVars)),
 			Required:    opts.Required,
 			Hidden:      opts.Hidden,
-			EnvVars:     opts.EnvVars,
 			Value:       dval,
 			Destination: any(opts.Destination).(*uint),
-			Action: func(cc *cli.Context, val uint) error {
+			Action: func(ctx context.Context, cmd *cli.Command, val uint) error {
 				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
@@ -170,13 +181,12 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Name:        opts.Name,
 			Aliases:     opts.Aliases,
 			Usage:       opts.Usage,
-			FilePath:    opts.FilePath,
+			Sources:     (buildSources(opts.FilePath, opts.EnvVars)),
 			Required:    opts.Required,
 			Hidden:      opts.Hidden,
-			EnvVars:     opts.EnvVars,
 			Value:       dval,
 			Destination: any(opts.Destination).(*int64),
-			Action: func(cc *cli.Context, val int64) error {
+			Action: func(ctx context.Context, cmd *cli.Command, val int64) error {
 				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
@@ -188,12 +198,12 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Name:        opts.Name,
 			Aliases:     opts.Aliases,
 			Usage:       opts.Usage,
-			FilePath:    opts.FilePath,
+			Sources:     (buildSources(opts.FilePath, opts.EnvVars)),
 			Required:    opts.Required,
 			Hidden:      opts.Hidden,
 			Value:       dval,
 			Destination: any(opts.Destination).(*uint64),
-			Action: func(cc *cli.Context, val uint64) error {
+			Action: func(ctx context.Context, cmd *cli.Command, val uint64) error {
 				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
@@ -205,13 +215,12 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Name:        opts.Name,
 			Aliases:     opts.Aliases,
 			Usage:       opts.Usage,
-			FilePath:    opts.FilePath,
 			Required:    opts.Required,
+			Sources:     (buildSources(opts.FilePath, opts.EnvVars)),
 			Hidden:      opts.Hidden,
-			EnvVars:     opts.EnvVars,
 			Value:       dval,
 			Destination: any(opts.Destination).(*float64),
-			Action: func(cc *cli.Context, val float64) error {
+			Action: func(ctx context.Context, cmd *cli.Command, val float64) error {
 				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
@@ -223,37 +232,35 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Name:        opts.Name,
 			Aliases:     opts.Aliases,
 			Usage:       opts.Usage,
-			FilePath:    opts.FilePath,
+			Sources:     (buildSources(opts.FilePath, opts.EnvVars)),
 			Required:    opts.Required,
 			Hidden:      opts.Hidden,
-			EnvVars:     opts.EnvVars,
 			Value:       dval,
 			Destination: any(opts.Destination).(*bool),
-			Action: func(cc *cli.Context, val bool) error {
+			Action: func(ctx context.Context, cmd *cli.Command, val bool) error {
 				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
 				return out.validateOnce.Resolve()
 			},
 		}
-	case *time.Time:
+	case time.Time:
 		if opts.TimestampLayout == "" {
 			opts.TimestampLayout = time.RFC3339
 		}
-		if dval == nil {
-			dval = &time.Time{}
+		if dval.IsZero() {
+			dval = time.Time{}
 		}
 		out.value = &cli.TimestampFlag{
 			Name:     opts.Name,
 			Aliases:  opts.Aliases,
 			Usage:    opts.Usage,
-			FilePath: opts.FilePath,
+			Sources:  buildSources(opts.FilePath, opts.EnvVars),
 			Required: opts.Required,
 			Hidden:   opts.Hidden,
-			Value:    cli.NewTimestamp(*dval),
-			EnvVars:  opts.EnvVars,
-			Layout:   opts.TimestampLayout,
-			Action: func(cc *cli.Context, val *time.Time) error {
+			Value:    dval,
+			Config:   cli.TimestampConfig{Layouts: []string{opts.TimestampLayout}},
+			Action: func(ctx context.Context, cmd *cli.Command, val time.Time) error {
 				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
@@ -265,12 +272,11 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Name:     opts.Name,
 			Aliases:  opts.Aliases,
 			Usage:    opts.Usage,
-			FilePath: opts.FilePath,
+			Sources:  buildSources(opts.FilePath, opts.EnvVars),
 			Required: opts.Required,
-			EnvVars:  opts.EnvVars,
 			Hidden:   opts.Hidden,
 			Value:    dval,
-			Action: func(cc *cli.Context, val time.Duration) error {
+			Action: func(ctx context.Context, cmd *cli.Command, val time.Duration) error {
 				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
@@ -282,11 +288,10 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Name:     opts.Name,
 			Aliases:  opts.Aliases,
 			Usage:    opts.Usage,
-			FilePath: opts.FilePath,
+			Sources:  buildSources(opts.FilePath, opts.EnvVars),
 			Required: opts.Required,
 			Hidden:   opts.Hidden,
-			EnvVars:  opts.EnvVars,
-			Action: func(cc *cli.Context, val []string) error {
+			Action: func(ctx context.Context, cmd *cli.Command, val []string) error {
 				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
@@ -302,11 +307,10 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Name:     opts.Name,
 			Aliases:  opts.Aliases,
 			Usage:    opts.Usage,
-			FilePath: opts.FilePath,
+			Sources:  buildSources(opts.FilePath, opts.EnvVars),
 			Required: opts.Required,
 			Hidden:   opts.Hidden,
-			EnvVars:  opts.EnvVars,
-			Action: func(cc *cli.Context, val []int) error {
+			Action: func(ctx context.Context, cmd *cli.Command, val []int) error {
 				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
@@ -320,11 +324,10 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Name:     opts.Name,
 			Aliases:  opts.Aliases,
 			Usage:    opts.Usage,
-			FilePath: opts.FilePath,
+			Sources:  (buildSources(opts.FilePath, opts.EnvVars)),
 			Required: opts.Required,
-			EnvVars:  opts.EnvVars,
 			Hidden:   opts.Hidden,
-			Action: func(cc *cli.Context, val []int64) error {
+			Action: func(ctx context.Context, cmd *cli.Command, val []int64) error {
 				out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
@@ -344,7 +347,7 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 //
 // This will panic at runtime if the type of the flag specified does
 // not match the type of the flag as defined.
-func GetFlag[T FlagTypes](cc *cli.Context, name string) T {
+func GetFlag[T FlagTypes](cc *cli.Command, name string) T {
 	var out T
 
 	switch any(out).(type) {
@@ -362,7 +365,7 @@ func GetFlag[T FlagTypes](cc *cli.Context, name string) T {
 		out = any(cc.Float64(name)).(T)
 	case bool:
 		out = any(cc.Bool(name)).(T)
-	case *time.Time:
+	case time.Time:
 		out = any(cc.Timestamp(name)).(T)
 	case time.Duration:
 		out = any(cc.Duration(name)).(T)
@@ -377,7 +380,7 @@ func GetFlag[T FlagTypes](cc *cli.Context, name string) T {
 	return out
 }
 
-func GetFlagOrFirstArg[T FlagTypes](cc *cli.Context, name string) (zero T) {
+func GetFlagOrFirstArg[T FlagTypes](cc *cli.Command, name string) (zero T) {
 	arg := GetFlag[T](cc, name)
 
 	if !cc.IsSet(name) {

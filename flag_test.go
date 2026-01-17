@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 
 	"github.com/tychoish/fun/assert"
 	"github.com/tychoish/fun/assert/check"
@@ -23,7 +23,7 @@ func TestFlags(t *testing.T) {
 				Validate: func(in int) error { counter++; check.Equal(t, in, 42); return nil },
 			})
 			check.Equal(t, "hello", flag.value.Names()[0])
-			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
+			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Command) error {
 				counter++
 				check.Equal(t, 42, cc.Int("hello"))
 				check.Equal(t, 42, GetFlag[int](cc, "hello"))
@@ -40,7 +40,7 @@ func TestFlags(t *testing.T) {
 				Validate: func(in uint) error { counter++; check.Equal(t, in, 42); return nil },
 			})
 			check.Equal(t, "hello", flag.value.Names()[0])
-			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
+			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Command) error {
 				counter++
 				check.Equal(t, 42, cc.Uint("hello"))
 				check.Equal(t, 42, GetFlag[uint](cc, "hello"))
@@ -57,7 +57,7 @@ func TestFlags(t *testing.T) {
 				Validate: func(in int64) error { counter++; check.Equal(t, in, 42); return nil },
 			})
 			check.Equal(t, "hello", flag.value.Names()[0])
-			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
+			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Command) error {
 				counter++
 				check.Equal(t, 42, cc.Int64("hello"))
 				check.Equal(t, 42, GetFlag[int64](cc, "hello"))
@@ -74,7 +74,7 @@ func TestFlags(t *testing.T) {
 				Validate: func(in uint64) error { counter++; check.Equal(t, in, 42); return nil },
 			})
 			check.Equal(t, "hello", flag.value.Names()[0])
-			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
+			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Command) error {
 				counter++
 				check.Equal(t, 42, cc.Uint64("hello"))
 				check.Equal(t, 42, GetFlag[uint64](cc, "hello"))
@@ -91,7 +91,7 @@ func TestFlags(t *testing.T) {
 				Validate: func(in time.Duration) error { counter++; check.Equal(t, in, 42*time.Second); return nil },
 			})
 			check.Equal(t, "hello", flag.value.Names()[0])
-			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
+			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Command) error {
 				counter++
 				check.Equal(t, 42*time.Second, cc.Duration("hello"))
 				check.Equal(t, 42*time.Second, GetFlag[time.Duration](cc, "hello"))
@@ -108,7 +108,7 @@ func TestFlags(t *testing.T) {
 				Validate: func(in float64) error { counter++; check.Equal(t, in, 42); return nil },
 			})
 			check.Equal(t, "hello", flag.value.Names()[0])
-			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
+			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Command) error {
 				counter++
 				check.Equal(t, 42, cc.Float64("hello"))
 				check.Equal(t, 42, GetFlag[float64](cc, "hello"))
@@ -125,7 +125,7 @@ func TestFlags(t *testing.T) {
 				Default: false,
 			})
 			check.Equal(t, "hello", flag.value.Names()[0])
-			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
+			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Command) error {
 				counter++
 				check.True(t, !cc.Bool("hello"))
 				check.True(t, !GetFlag[bool](cc, "hello"))
@@ -142,7 +142,7 @@ func TestFlags(t *testing.T) {
 				Default: true,
 			})
 			check.Equal(t, "hello", flag.value.Names()[0])
-			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
+			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Command) error {
 				counter++
 				check.True(t, cc.Bool("hello"))
 				check.True(t, GetFlag[bool](cc, "hello"))
@@ -164,7 +164,7 @@ func TestFlags(t *testing.T) {
 				},
 			})
 			check.Equal(t, "hello", flag.value.Names()[0])
-			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
+			cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Command) error {
 				counter++
 				val := cc.StringSlice("hello")
 				check.Equal(t, val[0], "not")
@@ -188,7 +188,7 @@ func TestFlags(t *testing.T) {
 			}).SetName("hello").Flag()
 			cmd := MakeCommander().
 				Flags(flag).
-				SetAction(func(ctx context.Context, cc *cli.Context) error {
+				SetAction(func(ctx context.Context, cc *cli.Command) error {
 					counter++
 					val := cc.IntSlice("hello")
 					assert.Equal(t, len(val), 2)
@@ -216,7 +216,7 @@ func TestFlags(t *testing.T) {
 			})
 			cmd := MakeCommander().
 				Flags(flag).
-				SetAction(func(ctx context.Context, cc *cli.Context) error {
+				SetAction(func(ctx context.Context, cc *cli.Command) error {
 					counter++
 					val := cc.Int64Slice("hello")
 					assert.Equal(t, len(val), 2)
@@ -238,7 +238,7 @@ func TestFlags(t *testing.T) {
 			called := false
 			cmd := MakeCommander().
 				Flags(FlagBuilder("hi").SetName("world").Flag()).
-				SetAction(func(_ context.Context, cc *cli.Context) error {
+				SetAction(func(_ context.Context, cc *cli.Command) error {
 					check.Equal(t, cc.String("world"), "hi")
 					check.Equal(t, GetFlag[string](cc, "world"), "hi")
 					called = true
@@ -251,10 +251,10 @@ func TestFlags(t *testing.T) {
 			called := false
 			now := time.Now()
 			cmd := MakeCommander().
-				Flags(FlagBuilder(&now).SetName("world", "fire").Flag()).
-				SetAction(func(_ context.Context, cc *cli.Context) error {
-					check.Equal(t, *cc.Timestamp("fire"), now)
-					check.Equal(t, *GetFlag[*time.Time](cc, "world"), now)
+				Flags(FlagBuilder(now).SetName("world", "fire").Flag()).
+				SetAction(func(_ context.Context, cc *cli.Command) error {
+					check.Equal(t, cc.Timestamp("fire"), now)
+					check.Equal(t, GetFlag[time.Time](cc, "world"), now)
 
 					called = true
 					return nil
@@ -265,15 +265,15 @@ func TestFlags(t *testing.T) {
 		t.Run("Timestamp", func(t *testing.T) {
 			t.Run("Current", func(t *testing.T) {
 				called := false
-				now := time.Now().Truncate(time.Minute)
+				now := time.Now().UTC().Truncate(time.Minute)
 				cmd := MakeCommander().
-					Flags(FlagBuilder(&now).SetName("world", "fire").
+					Flags(FlagBuilder(now).SetName("world", "fire").
 						SetTimestmapLayout(time.RFC822).
 						Flag(),
 					).
-					SetAction(func(_ context.Context, cc *cli.Context) error {
+					SetAction(func(_ context.Context, cc *cli.Command) error {
 						check.True(t, cc.Timestamp("world").Equal(now.Add(time.Hour)))
-						check.True(t, GetFlag[*time.Time](cc, "world").Equal(now.Add(time.Hour)))
+						check.True(t, GetFlag[time.Time](cc, "world").Equal(now.Add(time.Hour)))
 						called = true
 						return nil
 					})
@@ -283,12 +283,12 @@ func TestFlags(t *testing.T) {
 			t.Run("UnixTimeEpoch", func(t *testing.T) {
 				counter := 0
 				epoch := time.Unix(0, 0)
-				flag := MakeFlag[*time.Time](&FlagOptions[*time.Time]{Name: "hello"})
+				flag := MakeFlag[time.Time](&FlagOptions[time.Time]{Name: "hello"})
 				check.Equal(t, "hello", flag.value.Names()[0])
-				cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Context) error {
+				cmd := MakeCommander().Flags(flag).SetAction(func(ctx context.Context, cc *cli.Command) error {
 					counter++
 					check.True(t, cc.Timestamp("hello").Equal(epoch))
-					check.True(t, GetFlag[*time.Time](cc, "hello").Equal(epoch))
+					check.True(t, GetFlag[time.Time](cc, "hello").Equal(epoch))
 					return nil
 				})
 				assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", epoch.Format(time.RFC3339)}))
@@ -316,7 +316,7 @@ func TestFlags(t *testing.T) {
 					}).
 					Flag(),
 				).
-				SetAction(func(_ context.Context, cc *cli.Context) error {
+				SetAction(func(_ context.Context, cc *cli.Command) error {
 					check.Equal(t, cc.String("world"), "beep")
 					check.Equal(t, GetFlag[string](cc, "world"), "beep")
 					count++
@@ -330,7 +330,5 @@ func TestFlags(t *testing.T) {
 			flag := FlagBuilder("hi")
 			check.Panic(t, func() { flag.SetTimestmapLayout("100") })
 		})
-
 	})
-
 }

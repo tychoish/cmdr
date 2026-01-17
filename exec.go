@@ -24,7 +24,7 @@ func Run(ctx context.Context, c *Commander, args []string) error {
 
 	c.setContext(ctx)
 	app := c.App()
-	return app.RunContext(c.getContext(), args)
+	return app.Run(c.getContext(), args)
 }
 
 // Main provides an alternative to Run() for calling within in a

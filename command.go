@@ -8,7 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 
 	"github.com/tychoish/fun/adt"
 	"github.com/tychoish/fun/dt"
@@ -23,10 +23,10 @@ import (
 // hooks.
 //
 // Upon execution these functions get the context processed by the
-// middleware, and the cli package's context. In practice, rather than
+// middleware, and the cli package's command. In practice, rather than
 // defining action functions directly, use the AddOperation function
 // to define more strongly typed operations.
-type Action func(ctx context.Context, c *cli.Context) error
+type Action func(ctx context.Context, c *cli.Command) error
 
 // Middleware processes the context, attaching timeouts, or values as
 // needed. Middlware is processed after hooks but before the operation.
@@ -95,7 +95,7 @@ func MakeRootCommander() *Commander {
 		in.PushBack(srv.WithCleanup)
 	})
 
-	c.cmd.After = func(_ *cli.Context) error {
+	c.cmd.After = func(ctx context.Context, _ *cli.Command) error {
 		if !c.blocking.Load() {
 			// cancel the parent context
 			srv.GetShutdownSignal(c.getContext())()
@@ -117,7 +117,7 @@ func MakeCommander() *Commander {
 
 	c.aliases.Set(&dt.List[string]{})
 
-	c.cmd.Before = func(cc *cli.Context) error {
+	c.cmd.Before = func(ctx context.Context, cc *cli.Command) (context.Context, error) {
 		ec := &erc.Collector{}
 
 		c.hook.With(func(hooks *dt.List[Action]) {
@@ -138,15 +138,15 @@ func MakeCommander() *Commander {
 			defer ec.Recover()
 			for flag := range flags.IteratorFront() {
 				if af, ok := flag.value.(cli.ActionableFlag); ok {
-					ec.Push(af.RunAction(cc))
+					ec.Push(af.RunAction(ctx, cc))
 				}
 			}
 		})
 
-		return ec.Resolve()
+		return c.getContext(), ec.Resolve()
 	}
 
-	c.cmd.Action = func(cc *cli.Context) error {
+	c.cmd.Action = func(ctx context.Context, cc *cli.Command) error {
 		op := c.action.Get()
 		if op != nil {
 			return op(c.getContext(), cc)
@@ -161,7 +161,7 @@ func MakeCommander() *Commander {
 			return erc.Join(cli.ShowAppHelp(cc), fmt.Errorf("no operation for %q: %w", c.cmd.Name, ErrNotSpecified))
 		}
 
-		return erc.Join(cli.ShowCommandHelp(cc, c.cmd.Name), fmt.Errorf("command %v: %w", cc.Args().Len(), ErrNotDefined))
+		return erc.Join(cli.ShowCommandHelp(ctx, cc, c.cmd.Name), fmt.Errorf("command %v: %w", cc.Args().Len(), ErrNotDefined))
 	}
 
 	return c
@@ -278,7 +278,7 @@ func (c *Commander) Command() *cli.Command {
 		c.subcmds.With(func(in *dt.List[*Commander]) {
 			for v := range in.IteratorFront() {
 				v.ctx = c.ctx
-				c.cmd.Subcommands = append(c.cmd.Subcommands, v.Command())
+				c.cmd.Commands = append(c.cmd.Commands, v.Command())
 			}
 		})
 	})
@@ -305,18 +305,18 @@ func (c *Commander) SetAppOptions(opts AppOptions) *Commander { c.opts.Set(opts)
 // In most cases you will use the Run() or Main() methods, rather than
 // App() to use the commander, and Run()/Main() provide their own
 // contexts.
-func (c *Commander) App() *cli.App {
+func (c *Commander) App() *cli.Command {
 	erc.InvariantOk(c.ctx.Get() != nil, "context must be set before calling the app")
 	a := c.opts.Get()
 
 	cmd := c.Command()
-	app := cli.NewApp()
+	app := &cli.Command{}
 
 	app.Name = secondValueWhenFirstIsZero(a.Name, cmd.Name)
 	app.Usage = secondValueWhenFirstIsZero(a.Usage, cmd.Usage)
 	app.Version = a.Version
 
-	app.Commands = cmd.Subcommands
+	app.Commands = cmd.Commands
 	app.Action = cmd.Action
 	app.Flags = cmd.Flags
 	app.After = cmd.After
