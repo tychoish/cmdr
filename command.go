@@ -52,10 +52,12 @@ type Middleware func(ctx context.Context) context.Context
 // github.com/tychoish/fun/srv package's srv.AddCleanupHook() and
 // srv.AddCleanupError().
 type Commander struct {
-	once       sync.Once
-	cmd        cli.Command
-	hidden     atomic.Bool
-	blocking   atomic.Bool
+	once                  sync.Once
+	cmd                   cli.Command
+	hidden                atomic.Bool
+	blocking              atomic.Bool
+	enableShellCompletion atomic.Bool
+
 	opts       adt.Atomic[AppOptions]
 	name       adt.Atomic[string]
 	usage      adt.Atomic[string]
@@ -168,9 +170,12 @@ func MakeCommander() *Commander {
 }
 
 // SetAction defines the core operation for the commander.
-func (c *Commander) SetAction(in Action) *Commander { c.action.Set(in); return c }
-func (c *Commander) SetName(n string) *Commander    { c.name.Set(n); return c }
-func (c *Commander) SetUsage(u string) *Commander   { c.usage.Set(u); return c }
+func (c *Commander) SetAction(in Action) *Commander   { c.action.Set(in); return c }
+func (c *Commander) SetName(n string) *Commander      { c.name.Set(n); return c }
+func (c *Commander) SetUsage(u string) *Commander     { c.usage.Set(u); return c }
+func (c *Commander) SetHidden(in bool) *Commander     { c.hidden.Store(in); return c }
+func (c *Commander) EnableCompletionCmd() *Commander  { c.enableShellCompletion.Store(true); return c }
+func (c *Commander) DisableCompletionCmd() *Commander { c.enableShellCompletion.Store(false); return c }
 
 // SetBlocking configures the blocking semantics of the command. This
 // setting is only used by root Commander objects. It defaults to
@@ -259,6 +264,7 @@ func (c *Commander) Command() *cli.Command {
 
 		c.cmd.Name = secondValueWhenFirstIsZero(c.cmd.Name, c.name.Get())
 		c.cmd.Usage = secondValueWhenFirstIsZero(c.cmd.Usage, c.usage.Get())
+		c.cmd.EnableShellCompletion = secondValueWhenFirstIsZero(c.cmd.EnableShellCompletion, c.enableShellCompletion.Load())
 		c.cmd.Hidden = c.hidden.Load()
 
 		if len(c.cmd.Aliases) == 0 {
