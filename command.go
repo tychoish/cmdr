@@ -14,7 +14,6 @@ import (
 	"github.com/tychoish/fun/dt"
 	"github.com/tychoish/fun/erc"
 	"github.com/tychoish/fun/irt"
-	"github.com/tychoish/fun/srv"
 )
 
 // Action defines the core functionality for a command line entry
@@ -79,31 +78,22 @@ type Commander struct {
 	ctx *adt.Atomic[contextProducer]
 }
 
-// MakeRootCommander constructs a root commander object with basic
-// services configured. From the tychoish/fun/srv package, this
-// pre-populates a base context, shutdown signal, service
-// orchestrator, and cleanup system.
-//
-// Use MakeCommander to create a commander without these services
-// enabled/running.
+// MakeRootCommander constructs a root commander object. Use
+// MakeCommander to create a commander suitable for defining a
+// sub-command.
 func MakeRootCommander() *Commander {
 	c := MakeCommander()
 	c.SetName(filepath.Base(os.Args[0]))
 	c.ctx = adt.NewAtomic(ctxMaker(context.Background()))
 	c.middleware.With(func(in *dt.List[Middleware]) {
-		in.PushBack(srv.SetBaseContext)
-		in.PushBack(srv.SetShutdownSignal)
-		in.PushBack(srv.WithOrchestrator) // this starts the orchestrator
-		in.PushBack(srv.WithCleanup)
+		// TODO: restore this:
+		//    in.PushFront(srv.SetBaseContext)
+		//    in.PushFront(srv.SetShutdownSignal)
+		//    in.PushFront(srv.WithOrchestrator) // this starts the orchestrator
+		//    in.PushFront(srv.WithCleanup)
 	})
 
-	c.cmd.After = func(ctx context.Context, _ *cli.Command) error {
-		if !c.blocking.Load() {
-			// cancel the parent context
-			srv.GetShutdownSignal(c.getContext())()
-		}
-		return srv.GetOrchestrator(c.getContext()).Wait()
-	}
+	// TODO: set up shutdown
 
 	return c
 }
@@ -140,7 +130,7 @@ func MakeCommander() *Commander {
 			defer ec.Recover()
 			for flag := range flags.IteratorFront() {
 				if af, ok := flag.value.(cli.ActionableFlag); ok {
-					ec.Push(af.RunAction(ctx, cc))
+					ec.Push(af.RunAction(c.getContext(), cc))
 				}
 			}
 		})
@@ -320,6 +310,7 @@ func (c *Commander) App() *cli.Command {
 
 	app.Name = secondValueWhenFirstIsZero(a.Name, cmd.Name)
 	app.Usage = secondValueWhenFirstIsZero(a.Usage, cmd.Usage)
+	app.EnableShellCompletion = c.enableShellCompletion.Load()
 	app.Version = a.Version
 
 	app.Commands = cmd.Commands
