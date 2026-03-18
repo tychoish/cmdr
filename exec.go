@@ -6,6 +6,8 @@ import (
 	"os"
 
 	"github.com/tychoish/fun/adt"
+	"github.com/tychoish/fun/erc"
+	"github.com/tychoish/fun/srv"
 	"github.com/tychoish/grip"
 )
 
@@ -24,7 +26,17 @@ func Run(ctx context.Context, c *Commander, args []string) error {
 
 	c.setContext(ctx)
 	app := c.App()
-	return app.Run(c.getContext(), args)
+	err := app.Run(c.getContext(), args)
+
+	cctx := c.getContext()
+	if srv.HasShutdownSignal(cctx) {
+		srv.GetShutdownSignal(cctx)()
+	}
+	if srv.HasOrchestrator(cctx) {
+		err = erc.Join(err, srv.GetOrchestrator(cctx).Wait())
+	}
+
+	return err
 }
 
 // Main provides an alternative to Run() for calling within in a

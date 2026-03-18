@@ -14,6 +14,7 @@ import (
 	"github.com/tychoish/fun/dt"
 	"github.com/tychoish/fun/erc"
 	"github.com/tychoish/fun/irt"
+	"github.com/tychoish/fun/srv"
 )
 
 // Action defines the core functionality for a command line entry
@@ -86,14 +87,14 @@ func MakeRootCommander() *Commander {
 	c.SetName(filepath.Base(os.Args[0]))
 	c.ctx = adt.NewAtomic(ctxMaker(context.Background()))
 	c.middleware.With(func(in *dt.List[Middleware]) {
-		// TODO: restore this:
-		//    in.PushFront(srv.SetBaseContext)
-		//    in.PushFront(srv.SetShutdownSignal)
-		//    in.PushFront(srv.WithOrchestrator) // this starts the orchestrator
-		//    in.PushFront(srv.WithCleanup)
+		in.PushFront(func(ctx context.Context) context.Context {
+			ctx = srv.SetShutdownSignal(ctx) // establishes cancelable context first
+			ctx = srv.WithOrchestrator(ctx)  // orchestrator starts with the cancelable context
+			ctx = srv.WithCleanup(ctx)
+			ctx = srv.SetBaseContext(ctx)
+			return ctx
+		})
 	})
-
-	// TODO: set up shutdown
 
 	return c
 }

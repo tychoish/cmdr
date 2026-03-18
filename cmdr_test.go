@@ -379,7 +379,25 @@ func TestCommander(t *testing.T) {
 				assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "--hello", "kip"}))
 				assert.Equal(t, count, 2)
 			})
-			t.Run("AddCommand", func(t *testing.T) {
+			t.Run("SubcommandAccess", func(t *testing.T) {
+			count := 0
+			sub := MakeCommander().
+				SetName("sub").
+				SetAction(func(ctx context.Context, cc *cli.Command) error {
+					count++
+					assert.True(t, srv.HasBaseContext(ctx))
+					return nil
+				})
+			cmd := MakeRootCommander().
+				Middleware(func(ctx context.Context) context.Context {
+					count++
+					return srv.SetBaseContext(ctx)
+				}).
+				Subcommanders(sub)
+			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "sub"}))
+			assert.Equal(t, count, 2)
+		})
+		t.Run("AddCommand", func(t *testing.T) {
 				count := 0
 				cmd := MakeRootCommander().
 					Hooks(func(ctx context.Context, cc *cli.Command) error {
@@ -420,6 +438,66 @@ func TestCommander(t *testing.T) {
 				Main(ctx, cmd)
 			})
 			assert.Equal(t, count, 1)
+		})
+	})
+	t.Run("Services", func(t *testing.T) {
+		t.Run("OrchestratorTask", func(t *testing.T) {
+			started := make(chan struct{})
+			cmd := MakeRootCommander().
+				SetAction(func(ctx context.Context, cc *cli.Command) error {
+					assert.True(t, srv.HasOrchestrator(ctx))
+					assert.True(t, srv.HasCleanup(ctx))
+					assert.True(t, srv.HasBaseContext(ctx))
+					err := srv.GetOrchestrator(ctx).Add(&srv.Service{
+						Name: "test-task",
+						Run: func(ctx context.Context) error {
+							close(started)
+							return nil
+						},
+					})
+					if err != nil {
+						return err
+					}
+					<-started
+					return nil
+				})
+			assert.NotError(t, Run(ctx, cmd, []string{t.Name()}))
+		})
+		t.Run("WorkerPool", func(t *testing.T) {
+			done := make(chan struct{})
+			cmd := MakeRootCommander().
+				Middleware(func(ctx context.Context) context.Context {
+					return srv.WithWorkerPool(ctx, "test-pool")
+				}).
+				SetAction(func(ctx context.Context, cc *cli.Command) error {
+					if err := srv.AddToWorkerPool(ctx, "test-pool", func(ctx context.Context) error {
+						close(done)
+						return nil
+					}); err != nil {
+						return err
+					}
+					<-done
+					return nil
+				})
+			assert.NotError(t, Run(ctx, cmd, []string{t.Name()}))
+		})
+		t.Run("Cleanup", func(t *testing.T) {
+			cleanupRan := make(chan struct{})
+			cmd := MakeRootCommander().
+				SetAction(func(ctx context.Context, cc *cli.Command) error {
+					assert.True(t, srv.HasCleanup(ctx))
+					srv.AddCleanup(ctx, func(ctx context.Context) error {
+						close(cleanupRan)
+						return nil
+					})
+					return nil
+				})
+			assert.NotError(t, Run(ctx, cmd, []string{t.Name()}))
+			select {
+			case <-cleanupRan:
+			default:
+				t.Error("cleanup did not run after Run() returned")
+			}
 		})
 	})
 	t.Run("OperationNotDefined", func(t *testing.T) {
