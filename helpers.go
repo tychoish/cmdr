@@ -188,3 +188,7 @@ func (opts CommandOptions[T]) Add(c *Commander) {
 func OptionsCommander[T any](opts CommandOptions[T]) *Commander {
 	return MakeCommander().With(opts.Add)
 }
+
+func DefaultHelpAction(ctx context.Context, cc *cli.Command) error {
+	return cli.ShowAppHelp(cc)
+}

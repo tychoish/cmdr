@@ -28,6 +28,10 @@ import (
 // to define more strongly typed operations.
 type Action func(ctx context.Context, c *cli.Command) error
 
+func HelpAction(ctx context.Context, cc *cli.Command) error {
+	return cli.ShowAppHelp(cc)
+}
+
 // Middleware processes the context, attaching timeouts, or values as
 // needed. Middlware is processed after hooks but before the operation.
 type Middleware func(ctx context.Context) context.Context
