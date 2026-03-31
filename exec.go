@@ -3,12 +3,12 @@ package cmdr
 import (
 	"context"
 	"errors"
+	"log"
 	"os"
 
 	"github.com/tychoish/fun/adt"
 	"github.com/tychoish/fun/erc"
 	"github.com/tychoish/fun/srv"
-	"github.com/tychoish/grip"
 )
 
 var ErrNotDefined = errors.New("not defined")
@@ -20,7 +20,6 @@ var ErrNotSet = errors.New("not set")
 // Run executes a commander with the specified command line arguments.
 func Run(ctx context.Context, c *Commander, args []string) error {
 	if c.ctx == nil {
-		grip.Alert(grip.MPrintf("commander %q is not a root commander, and ought to be", c.name.Get()))
 		c.ctx = adt.NewAtomic(ctxMaker(ctx))
 	}
 
@@ -43,6 +42,7 @@ func Run(ctx context.Context, c *Commander, args []string) error {
 // program's main() function. Non-nil errors are logged at the
 // "Emergency" level and os.Exit(1) is called.
 func Main(ctx context.Context, c *Commander) {
-	err := Run(ctx, c, os.Args)
-	grip.Context(c.getContext()).EmergencyFatal(err)
+	if err := Run(ctx, c, os.Args); err != nil {
+		log.Panic(err)
+	}
 }
