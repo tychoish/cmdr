@@ -353,8 +353,6 @@ func TestCommander(t *testing.T) {
 							t.Error("middleware did not set context")
 						}
 						panic("woop")
-						count++
-						return nil
 					}).
 					Flags(MakeFlag(&FlagOptions[string]{Name: "hello"}))
 				assert.Panic(t, func() {
@@ -380,24 +378,24 @@ func TestCommander(t *testing.T) {
 				assert.Equal(t, count, 2)
 			})
 			t.Run("SubcommandAccess", func(t *testing.T) {
-			count := 0
-			sub := MakeCommander().
-				SetName("sub").
-				SetAction(func(ctx context.Context, cc *cli.Command) error {
-					count++
-					assert.True(t, srv.HasBaseContext(ctx))
-					return nil
-				})
-			cmd := MakeRootCommander().
-				Middleware(func(ctx context.Context) context.Context {
-					count++
-					return srv.SetBaseContext(ctx)
-				}).
-				Subcommanders(sub)
-			assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "sub"}))
-			assert.Equal(t, count, 2)
-		})
-		t.Run("AddCommand", func(t *testing.T) {
+				count := 0
+				sub := MakeCommander().
+					SetName("sub").
+					SetAction(func(ctx context.Context, cc *cli.Command) error {
+						count++
+						assert.True(t, srv.HasBaseContext(ctx))
+						return nil
+					})
+				cmd := MakeRootCommander().
+					Middleware(func(ctx context.Context) context.Context {
+						count++
+						return srv.SetBaseContext(ctx)
+					}).
+					Subcommanders(sub)
+				assert.NotError(t, Run(ctx, cmd, []string{t.Name(), "sub"}))
+				assert.Equal(t, count, 2)
+			})
+			t.Run("AddCommand", func(t *testing.T) {
 				count := 0
 				cmd := MakeRootCommander().
 					Hooks(func(ctx context.Context, cc *cli.Command) error {

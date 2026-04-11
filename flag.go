@@ -136,10 +136,9 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Value:       dval,
 			Destination: any(opts.Destination).(*string),
 			Action: func(ctx context.Context, cmd *cli.Command, val string) error {
-				out.validateOnce.Do(func() error {
+				return out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
-				return out.validateOnce.Resolve()
 			},
 		}
 	case int:
@@ -153,10 +152,9 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Value:       dval,
 			Destination: any(opts.Destination).(*int),
 			Action: func(ctx context.Context, cmd *cli.Command, val int) error {
-				out.validateOnce.Do(func() error {
+				return out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
-				return out.validateOnce.Resolve()
 			},
 		}
 	case uint:
@@ -170,10 +168,9 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Value:       dval,
 			Destination: any(opts.Destination).(*uint),
 			Action: func(ctx context.Context, cmd *cli.Command, val uint) error {
-				out.validateOnce.Do(func() error {
+				return out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
-				return out.validateOnce.Resolve()
 			},
 		}
 	case int64:
@@ -187,10 +184,9 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Value:       dval,
 			Destination: any(opts.Destination).(*int64),
 			Action: func(ctx context.Context, cmd *cli.Command, val int64) error {
-				out.validateOnce.Do(func() error {
+				return out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
-				return out.validateOnce.Resolve()
 			},
 		}
 	case uint64:
@@ -204,10 +200,9 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Value:       dval,
 			Destination: any(opts.Destination).(*uint64),
 			Action: func(ctx context.Context, cmd *cli.Command, val uint64) error {
-				out.validateOnce.Do(func() error {
+				return out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
-				return out.validateOnce.Resolve()
 			},
 		}
 	case float64:
@@ -221,10 +216,9 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Value:       dval,
 			Destination: any(opts.Destination).(*float64),
 			Action: func(ctx context.Context, cmd *cli.Command, val float64) error {
-				out.validateOnce.Do(func() error {
+				return out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
-				return out.validateOnce.Resolve()
 			},
 		}
 	case bool:
@@ -238,10 +232,9 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Value:       dval,
 			Destination: any(opts.Destination).(*bool),
 			Action: func(ctx context.Context, cmd *cli.Command, val bool) error {
-				out.validateOnce.Do(func() error {
+				return out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
-				return out.validateOnce.Resolve()
 			},
 		}
 	case time.Time:
@@ -261,10 +254,9 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Value:    dval,
 			Config:   cli.TimestampConfig{Layouts: []string{opts.TimestampLayout}},
 			Action: func(ctx context.Context, cmd *cli.Command, val time.Time) error {
-				out.validateOnce.Do(func() error {
+				return out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
-				return out.validateOnce.Resolve()
 			},
 		}
 	case time.Duration:
@@ -277,10 +269,9 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Hidden:   opts.Hidden,
 			Value:    dval,
 			Action: func(ctx context.Context, cmd *cli.Command, val time.Duration) error {
-				out.validateOnce.Do(func() error {
+				return out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
-				return out.validateOnce.Resolve()
 			},
 		}
 	case []string:
@@ -292,10 +283,9 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Required: opts.Required,
 			Hidden:   opts.Hidden,
 			Action: func(ctx context.Context, cmd *cli.Command, val []string) error {
-				out.validateOnce.Do(func() error {
+				return out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
-				return out.validateOnce.Resolve()
 			},
 		}
 		erc.InvariantOk(len(dval) == 0, "slice flags should not have default values")
@@ -311,10 +301,9 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Required: opts.Required,
 			Hidden:   opts.Hidden,
 			Action: func(ctx context.Context, cmd *cli.Command, val []int) error {
-				out.validateOnce.Do(func() error {
+				return out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
-				return out.validateOnce.Resolve()
 			},
 		}
 		erc.InvariantOk(len(dval) == 0, "slice flags should not have default values")
@@ -328,10 +317,9 @@ func MakeFlag[T FlagTypes](opts *FlagOptions[T]) Flag {
 			Required: opts.Required,
 			Hidden:   opts.Hidden,
 			Action: func(ctx context.Context, cmd *cli.Command, val []int64) error {
-				out.validateOnce.Do(func() error {
+				return out.validateOnce.Do(func() error {
 					return opts.doValidate(any(val).(T))
 				})
-				return out.validateOnce.Resolve()
 			},
 		}
 

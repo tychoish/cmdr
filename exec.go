@@ -20,7 +20,7 @@ var ErrNotSet = errors.New("not set")
 // Run executes a commander with the specified command line arguments.
 func Run(ctx context.Context, c *Commander, args []string) error {
 	if c.ctx == nil {
-		grip.Alertf("commander %q is not a root commander, and ought to be", c.name.Get())
+		grip.Alert(grip.MPrintf("commander %q is not a root commander, and ought to be", c.name.Get()))
 		c.ctx = adt.NewAtomic(ctxMaker(ctx))
 	}
 
