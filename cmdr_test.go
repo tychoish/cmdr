@@ -352,7 +352,7 @@ func TestCommander(t *testing.T) {
 						if ctx != nil {
 							t.Error("middleware did not set context")
 						}
-						panic("woop")
+						return nil
 					}).
 					Flags(MakeFlag(&FlagOptions[string]{Name: "hello"}))
 				assert.Panic(t, func() {
