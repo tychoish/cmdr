@@ -4,7 +4,6 @@
 building CLI tools, using a clean and opinionated platform including:
 
 - [github.com/urfave/cli](https://github.com/urfave/cli): cli orchestrator.
-- [github.com/tychoish/grip](https://github.com/tychoish/grip): logging.
 - [github.com/tychoish/fun](https://github.com/tychoish/fun): tooling, data
   structures, service orchestration.
 
@@ -33,7 +32,6 @@ import (
 
 	"github.com/tychoish/cmdr"
 	"github.com/tychoish/fun/srv"
-	"github.com/tychoish/grip"
 	"github.com/urfave/cli/v2"
 )
 
@@ -52,19 +50,14 @@ func StartService(ctx context.Context, conf *ServiceConfig) error {
 
 			num := counter.Add(1)
 
-			grip.Infof("got request: %d", num)
-
 			rw.Write([]byte(conf.Message))
 		}),
 	}
 
 	// cleanup functions run as soon as the context is canceled.
 	srv.AddCleanup(ctx, func(context.Context) error {
-		grip.Info("beginning cleanup")
 		return nil
 	})
-
-	grip.Infof("starting web service, pid=%d", os.Getpid())
 
 	return srv.GetOrchestrator(ctx).Add(srv.HTTP("hello-world", time.Minute, web))
 }

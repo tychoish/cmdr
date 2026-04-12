@@ -2,20 +2,20 @@ package cmdr
 
 import (
 	"context"
-	"errors"
 	"log"
 	"os"
 
 	"github.com/tychoish/fun/adt"
 	"github.com/tychoish/fun/erc"
+	"github.com/tychoish/fun/ers"
 	"github.com/tychoish/fun/srv"
 )
 
-var ErrNotDefined = errors.New("not defined")
+const ErrNotDefined = ers.Error("not defined")
 
-var ErrNotSpecified = errors.New("not specified")
+const ErrNotSpecified = ers.Error("not specified")
 
-var ErrNotSet = errors.New("not set")
+const ErrNotSet = ers.Error("not set")
 
 // Run executes a commander with the specified command line arguments.
 func Run(ctx context.Context, c *Commander, args []string) error {
