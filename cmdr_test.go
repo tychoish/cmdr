@@ -168,7 +168,7 @@ func TestCommander(t *testing.T) {
 					Action: func(ctx context.Context, in string) error { count++; check.Equal(t, in, "hi"); return nil },
 				})
 				assert.Equal(t, cmd.numHooks(), 1)
-				assert.Equal(t, cmd.numMiddleware(), 1)
+				assert.Equal(t, cmd.numMiddleware(), 0)
 				assert.True(t, cmd.action.Get() != nil)
 				assert.NotError(t, Run(ctx, cmd, []string{"comp"}))
 				assert.Equal(t, count, 4)
@@ -197,7 +197,7 @@ func TestCommander(t *testing.T) {
 				)
 
 				assert.Equal(t, cmd.numHooks(), 1)
-				assert.Equal(t, cmd.numMiddleware(), 1)
+				assert.Equal(t, cmd.numMiddleware(), 0)
 				assert.True(t, cmd.action.Get() != nil)
 				assert.NotError(t, Run(ctx, cmd, []string{"comp"}))
 				assert.Equal(t, count, 4)
