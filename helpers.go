@@ -74,14 +74,15 @@ func (s *OperationSpec[T]) Add(c *Commander) {
 				return err
 			}
 		}
+
+		// Apply middleware immediately after the constructor so that
+		// subsequent hooks on the same commander see the updated context.
+		if s.Middleware != nil {
+			c.setContext(s.Middleware(c.getContext(), out))
+		}
+
 		return nil
 	})
-
-	if s.Middleware != nil {
-		c.Middleware(func(ctx context.Context) context.Context {
-			return s.Middleware(ctx, out)
-		})
-	}
 
 	if s.Action != nil {
 		c.SetAction(func(ctx context.Context, _ *cli.Command) error {
