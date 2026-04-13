@@ -21,6 +21,10 @@ type contextProducer func() context.Context
 
 func ctxMaker(ctx context.Context) contextProducer { return func() context.Context { return ctx } }
 
+func pushTo[T any](l *adt.Synchronized[*dt.List[T]], i T) {
+	l.With(func(s *dt.List[T]) { s.PushBack(i) })
+}
+
 func appendTo[T any](l *adt.Synchronized[*dt.List[T]], i ...T) {
 	l.With(func(s *dt.List[T]) { s.Extend(irt.Slice(i)) })
 }

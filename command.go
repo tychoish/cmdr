@@ -10,9 +10,11 @@ import (
 
 	"github.com/urfave/cli/v3"
 
+	"github.com/tychoish/cmdr"
 	"github.com/tychoish/fun/adt"
 	"github.com/tychoish/fun/dt"
 	"github.com/tychoish/fun/erc"
+	"github.com/tychoish/fun/fnx"
 	"github.com/tychoish/fun/irt"
 	"github.com/tychoish/fun/srv"
 )
@@ -28,8 +30,21 @@ import (
 // to define more strongly typed operations.
 type Action func(ctx context.Context, c *cli.Command) error
 
-func HelpAction(ctx context.Context, cc *cli.Command) error {
-	return cli.ShowAppHelp(cc)
+// Attachment connects helpers like the OperationSpec to Commander
+// interfaces, typically via the Commander.With() method.
+type Attachment func(*Commander)
+
+// HelpAction wraps the underlying CLI package's help text as an action.
+func HelpAction() Attachment {
+	return func(cmd *Commander) {
+		cmd.SetAction(func(ctx context.Context, cc *cli.Command) error { return cli.ShowAppHelp(cc) })
+	}
+}
+
+func WorkerAction(op fnx.Worker) Attachment {
+	return func(cmd *Commander) {
+		cmd.SetAction(func(ctx context.Context, cc *cli.Command) error { return op(ctx) })
+	}
 }
 
 // Middleware processes the context, attaching timeouts, or values as
@@ -111,11 +126,10 @@ func MakeCommander() *Commander {
 	c.hook.Set(&dt.List[Action]{})
 	c.subcmds.Set(&dt.List[*Commander]{})
 	c.middleware.Set(&dt.List[Middleware]{})
-
 	c.aliases.Set(&dt.List[string]{})
 
 	c.cmd.Before = func(ctx context.Context, cc *cli.Command) (context.Context, error) {
-		ec := &erc.Collector{}
+		var ec erc.Collector
 
 		c.hook.With(func(hooks *dt.List[Action]) {
 			for op := range hooks.IteratorFront() {
@@ -142,26 +156,23 @@ func MakeCommander() *Commander {
 
 	c.cmd.Action = func(ctx context.Context, cc *cli.Command) error {
 		op := c.action.Get()
-		if op != nil {
+
+		switch {
+		case op != nil:
 			return op(c.getContext(), cc)
-		}
-
-		// no commands defined, no action defined,
-		if c.subcmds.Get().Len() == 0 {
+		case c.subcmds.Get().Len() == 0:
 			return fmt.Errorf("action: %w", ErrNotDefined)
-		}
-
-		if cc.Args().Len() == 0 {
+		case cc.Args().Len() == 0:
 			return erc.Join(cli.ShowAppHelp(cc), fmt.Errorf("no operation for %q: %w", c.cmd.Name, ErrNotSpecified))
+		default:
+			erc.Join(cli.ShowCommandHelp(ctx, cc, c.cmd.Name), fmt.Errorf("command %v: %w", cc.Args().Len(), ErrNotDefined))
 		}
-
-		return erc.Join(cli.ShowCommandHelp(ctx, cc, c.cmd.Name), fmt.Errorf("command %v: %w", cc.Args().Len(), ErrNotDefined))
 	}
 
 	return c
 }
 
-// SetAction defines the core operation for the commander.
+// SetAction defines the core operation for the commander. There can only be ONE action at a time.
 func (c *Commander) SetAction(in Action) *Commander   { c.action.Set(in); return c }
 func (c *Commander) SetName(n string) *Commander      { c.name.Set(n); return c }
 func (c *Commander) SetUsage(u string) *Commander     { c.usage.Set(u); return c }
@@ -193,6 +204,7 @@ func (c *Commander) Subcommanders(subs ...*Commander) *Commander {
 	appendTo(&c.subcmds, subs...)
 	return c
 }
+func (c *Commander) PushSubcommand(sc *cmdr.Commander) *Commander { pushTo(&c.subcmds, sc); return c }
 
 // UrfaveCommands directly adds a urfae/cli.Command as a subcommand
 // to the Commander.
@@ -226,13 +238,12 @@ func (c *Commander) UrfaveCommands(cc ...*cli.Command) *Commander {
 	return c
 }
 
-func (c *Commander) Flags(flags ...Flag) *Commander { appendTo(&c.flags, flags...); return c }
-func (c *Commander) Aliases(a ...string) *Commander { appendTo(&c.aliases, a...); return c }
-
 // Hooks adds a new hook to the commander. Hooks are all executed
 // before the command runs. While all hooks run and errors are
 // collected, if any hook errors the action will not execute.
-func (c *Commander) Hooks(op ...Action) *Commander { appendTo(&c.hook, op...); return c }
+func (c *Commander) Hooks(op ...Action) *Commander  { appendTo(&c.hook, op...); return c }
+func (c *Commander) Flags(flags ...Flag) *Commander { appendTo(&c.flags, flags...); return c }
+func (c *Commander) Aliases(a ...string) *Commander { appendTo(&c.aliases, a...); return c }
 
 // SetMiddlware allows users to modify the context passed to the hooks
 // and actions of a command.
@@ -243,7 +254,7 @@ func (c *Commander) Middleware(mws ...Middleware) *Commander {
 
 // With makes it possible to embed helper functions in a Commander
 // chain directly.
-func (c *Commander) With(op func(c *Commander)) *Commander { op(c); return c }
+func (c *Commander) With(op Attachment) *Commander { op(c); return c }
 
 // Command resolves the commander into a cli.Command instance. This
 // operation is safe to call more options.
